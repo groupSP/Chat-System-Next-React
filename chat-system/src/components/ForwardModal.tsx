@@ -1,4 +1,8 @@
 import { useState } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ForwardModalProps {
     onlineUsers: string[];
@@ -10,34 +14,41 @@ export default function ForwardModal({ onlineUsers, onClose, onForward }: Forwar
     const [selectedUser, setSelectedUser] = useState('');
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-white p-4 rounded">
-                <h4 className="text-xl font-bold mb-4">Select User to Forward Message</h4>
-                <select
-                    value={selectedUser}
-                    onChange={(e) => setSelectedUser(e.target.value)}
-                    className="p-2 border rounded mb-2 w-full"
-                >
-                    <option value="">Select a user</option>
-                    {onlineUsers.map((user) => (
-                        <option key={user} value={user}>
-                            {user}
-                        </option>
-                    ))}
-                </select>
-                <div className="flex justify-end space-x-2">
-                    <button
-                        onClick={() => onForward(selectedUser)}
-                        className="p-2 bg-blue-500 text-white rounded"
-                        disabled={!selectedUser}
+        <AnimatePresence>
+            <Dialog open={true} onOpenChange={onClose}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Forward Message</DialogTitle>
+                    </DialogHeader>
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        transition={{ duration: 0.3 }}
                     >
-                        Forward
-                    </button>
-                    <button onClick={onClose} className="p-2 bg-gray-300 rounded">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        </div>
+                        <Select value={selectedUser} onValueChange={setSelectedUser}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select a user" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {onlineUsers.map((user) => (
+                                    <SelectItem key={user} value={user}>
+                                        {user}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </motion.div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={onClose}>
+                            Cancel
+                        </Button>
+                        <Button onClick={() => onForward(selectedUser)} disabled={!selectedUser}>
+                            Forward
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </AnimatePresence>
     );
 }

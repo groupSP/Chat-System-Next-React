@@ -1,11 +1,17 @@
 import { useState } from 'react';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Send, FileUp, Forward } from 'lucide-react';
 
 interface ChatboxProps {
-    // username?: string;
+    username: string;
     onForward: () => void;
 }
 
-export default function Chatbox({ onForward }: ChatboxProps) {
+export default function Chatbox({ username, onForward }: ChatboxProps) {
     const [message, setMessage] = useState('');
     const [recipient, setRecipient] = useState('group');
 
@@ -19,34 +25,47 @@ export default function Chatbox({ onForward }: ChatboxProps) {
     };
 
     return (
-        <div className="w-3/4 bg-white p-4">
-            <div className="h-96 bg-gray-200 mb-4 overflow-y-auto" id="chat-messages"></div>
-            <div className="flex space-x-2">
-                <input
-                    type="text"
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    placeholder="Type your message..."
-                    className="flex-grow p-2 border rounded"
-                />
-                <select
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    className="p-2 border rounded"
-                >
-                    <option value="group">Group Chat</option>
-                </select>
-                <button onClick={handleSendMessage} className="p-2 bg-blue-500 text-white rounded">
-                    Send
-                </button>
-                <input type="file" id="file-input" className="hidden" />
-                <button onClick={handleSendFile} className="p-2 bg-green-500 text-white rounded">
-                    Send File
-                </button>
-                <button onClick={onForward} className="p-2 bg-yellow-500 text-white rounded">
-                    Forward
-                </button>
-            </div>
-        </div>
+        <Card className="w-full md:w-2/3 lg:w-3/4 flex flex-col">
+            <CardHeader>
+                <CardTitle className="text-2xl font-bold">Chat</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow overflow-hidden">
+                <ScrollArea className="h-[calc(100vh-16rem)]">
+                    <div id="chat-messages" className="space-y-4 p-4">
+                        {/* Chat messages would be rendered here */}
+                    </div>
+                </ScrollArea>
+            </CardContent>
+            <CardFooter>
+                <div className="flex space-x-2 w-full">
+                    <Input
+                        type="text"
+                        value={message}
+                        onChange={(e) => setMessage(e.target.value)}
+                        placeholder="Type your message..."
+                        className="flex-grow"
+                    />
+                    <Select value={recipient} onValueChange={setRecipient}>
+                        <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Select recipient" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="group">Group Chat</SelectItem>
+                            {/* Add other recipients here */}
+                        </SelectContent>
+                    </Select>
+                    <Button onClick={handleSendMessage}>
+                        <Send className="mr-2 h-4 w-4" /> Send
+                    </Button>
+                    <Input type="file" id="file-input" className="hidden" />
+                    <Button variant="secondary" onClick={handleSendFile}>
+                        <FileUp className="mr-2 h-4 w-4" /> Send File
+                    </Button>
+                    <Button variant="outline" onClick={onForward}>
+                        <Forward className="mr-2 h-4 w-4" /> Forward
+                    </Button>
+                </div>
+            </CardFooter>
+        </Card>
     );
 }

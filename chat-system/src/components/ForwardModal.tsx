@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from 'framer-motion';
+import { User } from "@/app/page";
 
 interface ForwardModalProps {
-    onlineUsers: string[];
+    onlineUsers: User[];
     onClose: () => void;
     onForward: (user: string) => void;
 }
@@ -32,8 +33,8 @@ export default function ForwardModal({ onlineUsers, onClose, onForward }: Forwar
                             </SelectTrigger>
                             <SelectContent>
                                 {onlineUsers.map((user) => (
-                                    <SelectItem key={user} value={user}>
-                                        {user}
+                                    <SelectItem key={user.publicKey} value={user.id}>
+                                        {user.username ?? user.id}
                                     </SelectItem>
                                 ))}
                             </SelectContent>

@@ -1,0 +1,6 @@
+Symmetric encryption is performed with AES in GCM mode.
+
+• Initialisation vector (IV) = 16 bytes (Must be randomly generated)
+• Additional/associated data = not used (empty).
+• Key length: 32 bytes (128 bits)
+• Authentication tag: 32 bytes (128 bits). The authentication tag takes up the final 128 bits of the ciphertext. 

@@ -6,6 +6,7 @@ import Chatbox from "@/components/Chatbox";
 import LoginContainer from "@/components/LoginContainer";
 import ForwardModal from "@/components/ForwardModal";
 import { AnimatePresence, motion } from "framer-motion";
+import { SignMessage } from "./api/Crypto";
 
 export class User {
   id: string;
@@ -43,40 +44,49 @@ type Client = {
 
 let processedFileMessages: string[] = [];
 
+//#region ChatSystem
 export default function ChatSystem() {
-  const ws = useRef<WebSocket | null>(null);
   const publicKey = useRef("");
   const privateKey = useRef<CryptoKey | null>(null);
+  const counter = useRef(0);
 
+  const [ws, setWS] = useState<WebSocket | null>(null);
   const [username, setUsername] = useState("");
+  const [userID, setUserID] = useState("");
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
 
   useEffect(() => {
-    console.log("Retry attempts:", retryAttempts);
     if (retryAttempts === 0) return;
+    console.log("Retry attempts:", retryAttempts);
 
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
       console.log("WebSocket already connected.");
-      ws.current.close();
+      ws.close();
     }
+    // ws = new WebSocket(`ws://${window.location.host}`);
+    setWS(new WebSocket(`ws://localhost:3000/`));
+  }, [retryAttempts]);
 
-    // ws.current = new WebSocket(`ws://${window.location.host}`);
-    ws.current = new WebSocket(`ws://localhost:3000/`);
-
-    ws.current.onopen = async () => {
+  useEffect(() => {
+    if (!ws) {
+      if (retryAttempts > 0)
+        console.error("WebSocket connection not established.");
+      return;
+    }
+    ws.onopen = async () => {
       console.log("WebSocket connection opened.");
       await generateKeyPair();
       setRetryAttempts(0);
 
-      if (ws.current) {
-        console.log("onmessage event inside the open is added.");
-        ws.current.onmessage = async (event) => {
-          console.log("Received WebSocket message:", event.data);
-        };
-      }
+      const helloMessage = {
+        type: "hello",
+        public_key: publicKey.current,
+        from: username,
+      };
+      ws.send(JSON.stringify(await signData(helloMessage)));
 
       // document.getElementById('forward-file').addEventListener('click', () => {
       //   const modal = document.getElementById('forward-modal');
@@ -105,7 +115,7 @@ export default function ChatSystem() {
 
       //   selectedMessages.forEach(message => {
       //     // Forwarding the message to the selected user
-      //     ws.current.send(JSON.stringify({
+      //     ws.send(JSON.stringify({
       //       type: 'forwardMessage',
       //       data: {
       //         originalMessage: message,
@@ -123,15 +133,9 @@ export default function ChatSystem() {
       // });
     };
 
-    if (!ws.current) {
-      console.log("WebSocket is not yet established.");
-      return;
-    }
-    console.log("onmessage event listener added");
-    ws.current.onmessage = (event) => {
-      console.log("Received WebSocket message:");
+    ws.onmessage = (event) => {
       const parsedMessage = JSON.parse(event.data);
-      console.log(parsedMessage);
+      console.log("Received WebSocket message:", parsedMessage);
 
       if (parsedMessage.type === "client_update") {
         addOnlineUser(
@@ -176,22 +180,27 @@ export default function ChatSystem() {
           }
         }
       } else if (parsedMessage.type === "signed_data") {
+        console.log("Received a signed data");
         const data = parsedMessage.data;
         if (data.type === "public_chat") {
           console.log("Received public chat message:", parsedMessage.message);
           setMessages((prev) => [
             ...prev,
-            new Message(new User("Group Chat", ""), parsedMessage.message),
+            new Message(
+              onlineUsers.find((user) => user.publicKey === data.sender) ??
+                new User("Unknown", "Unknown"),
+              data.message
+            ), // the group chat need to be changed
           ]);
         }
       }
 
-      if (ws.current) {
-        ws.current.onerror = (error) => {
+      if (ws) {
+        ws.onerror = (error) => {
           console.error("WebSocket error:", error);
         };
 
-        ws.current.onclose = () => {
+        ws.onclose = () => {
           console.log("WebSocket connection closed");
           // setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
         };
@@ -199,49 +208,89 @@ export default function ChatSystem() {
     };
 
     return () => {
-      ws.current?.close();
+      ws?.close();
     };
-  }, [retryAttempts]);
+  }, [ws]);
+  //#endregion
 
   //#region Functions
+  const signData = async (data: any) => {
+    return {
+      type: "signed_data",
+      data: data,
+      counter: counter.current++,
+      signature: await SignMessage(data, counter.current, privateKey.current!),
+    };
+  };
+
+  const computeFingerprint = async () => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(publicKey.current);
+    const hash = await window.crypto.subtle.digest("SHA-256", data);
+    return btoa(
+      String.fromCharCode.apply(null, Array.from(new Uint8Array(hash)))
+    );
+  };
+
   const generateKeyPair = async () => {
-    if (!ws.current) {
+    if (!ws) {
       console.error("WebSocket connection not established.");
       return;
     }
 
-    const keyPair = await window.crypto.subtle.generateKey(
+    // const keyPair = await window.crypto.subtle.generateKey(
+    //   {
+    //     name: "RSA-OAEP",
+    //     modulusLength: 2048,
+    //     publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+    //     hash: { name: "SHA-256" },
+    //   },
+    //   true,
+    //   ["encrypt", "decrypt"]
+    // );
+    const keyPair = await await window.crypto.subtle.generateKey(
       {
-        name: "RSA-OAEP",
+        name: "RSA-PSS",
         modulusLength: 2048,
-        publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
         hash: { name: "SHA-256" },
       },
       true,
-      ["encrypt", "decrypt"]
+      ["sign", "verify"]
     );
-
     const publicKeyTem = await window.crypto.subtle.exportKey(
       "spki",
       keyPair.publicKey
     );
 
-    // Send the public key to the server in "hello" message
     const publicKeyBase64 = btoa(
       String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
     );
-    const helloMessage = {
-      data: {
-        type: "hello",
-        public_key: publicKeyBase64,
-        from: username,
-      },
-    };
 
-    ws.current.send(JSON.stringify(helloMessage));
-
-    privateKey.current = keyPair.privateKey;
     publicKey.current = publicKeyBase64;
+    privateKey.current = keyPair.privateKey;
+    if (!username) setUsername("Anonymous");
+
+    setUserID(await computeFingerprint());
+  };
+
+  const sendMessage = async (message: string, recipient: string) => {
+    if (!ws) {
+      console.error("WebSocket connection not established.");
+      return;
+    }
+
+    if (recipient === "public_chat") {
+      const messageData = {
+        type: "public_chat",
+        message: message,
+        sender: publicKey.current,
+        from: username,
+      };
+      ws.send(JSON.stringify(await signData(messageData)));
+    } else {
+    }
+    console.log("mesage sent");
   };
 
   const addOnlineUser = (user: User[]) => {
@@ -252,9 +301,13 @@ export default function ChatSystem() {
           (u) => u.publicKey === addUser.publicKey
         );
         allUsers[index].id = addUser.id;
-        allUsers[index].username = addUser.username;
+        allUsers[index].username = addUser.username ?? addUser.id;
+
+        if (allUsers[index].publicKey === publicKey.current)
+          setUsername(allUsers[index].username);
       } else allUsers.push(addUser);
     });
+    // console.log("Online users:", allUsers);
     setOnlineUsers(allUsers);
   };
 
@@ -272,7 +325,7 @@ export default function ChatSystem() {
   return (
     <div className="container mx-auto p-4 min-h-screen bg-background text-foreground">
       <AnimatePresence mode="wait">
-        {username ? (
+        {privateKey.current ? (
           <motion.div
             key="chat"
             initial={{ opacity: 0, y: 20 }}
@@ -282,7 +335,13 @@ export default function ChatSystem() {
             className="flex flex-col md:flex-row h-[calc(100vh-2rem)] gap-4"
           >
             <Sidebar onlineUsers={onlineUsers} />
-            <Chatbox messages={messages} />
+            <Chatbox
+              messages={messages}
+              sendMessage={sendMessage}
+              username={username}
+              userID={userID}
+              onlineUsers={onlineUsers}
+            />
           </motion.div>
         ) : (
           <motion.div

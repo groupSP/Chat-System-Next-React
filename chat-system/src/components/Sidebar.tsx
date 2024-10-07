@@ -24,6 +24,7 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
           <ul className="space-y-4">
             {onlineUsers.map((user) => {
               const username = user.username ?? user.id;
+              // console.log("username", username);
               return (
                 <li
                   key={user.publicKey}
@@ -42,8 +43,10 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
                     <HoverCardTrigger>
                       <Button variant="link">{username}</Button>
                     </HoverCardTrigger>
-                    <HoverCardContent>
-                      <p>Private message to {username}</p>
+                    <HoverCardContent className="rounded-xl w-100">
+                      <p>ID: {user.id}</p>
+                      <br />
+                      <p>PublicKey: {user.publicKey.slice(0, 30)}...</p>
                     </HoverCardContent>
                   </HoverCard>
                 </li>

@@ -6,6 +6,10 @@ import Chatbox from "@/components/Chatbox";
 import LoginContainer from "@/components/LoginContainer";
 import ForwardModal from "@/components/ForwardModal";
 import { AnimatePresence, motion } from "framer-motion";
+import { io } from "socket.io-client";
+
+// Connect to the Socket.IO server
+const socket = io("http://localhost:3000");
 
 export class User {
   id: string;
@@ -44,7 +48,7 @@ type Client = {
 let processedFileMessages: string[] = [];
 
 export default function ChatSystem() {
-  const ws = useRef<WebSocket | null>(null);
+  // const ws = useRef<WebSocket | null>(null);
   const publicKey = useRef("");
   const privateKey = useRef<CryptoKey | null>(null);
 
@@ -56,159 +60,173 @@ export default function ChatSystem() {
 
   useEffect(() => {
     console.log("Retry attempts:", retryAttempts);
-    if (retryAttempts === 0) return;
+    // if (retryAttempts === 0) return;
 
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      console.log("WebSocket already connected.");
-      ws.current.close();
-    }
+    socket.on("connect", () => {
+      console.log("Connected to Socket.IO server");
+      socket.emit("message", "Hello from Socket.IO Client!");
 
-    // ws.current = new WebSocket(`ws://${window.location.host}`);
-    ws.current = new WebSocket(`ws://localhost:3000/`);
+      socket.on("message", (message) => {
+        console.log(`Message from server: ${message}`);
+      });
 
-    ws.current.onopen = async () => {
-      console.log("WebSocket connection opened.");
-      await generateKeyPair();
-      setRetryAttempts(0);
+      // Handle disconnection
+      socket.on("disconnect", () => {
+        console.log("Disconnected from Socket.IO server");
+      });
+    });
 
-      if (ws.current) {
-        console.log("onmessage event inside the open is added.");
-        ws.current.onmessage = async (event) => {
-          console.log("Received WebSocket message:", event.data);
-        };
-      }
+    // if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+    //   console.log("WebSocket already connected.");
+    //   ws.current.close();
+    // }
 
-      // document.getElementById('forward-file').addEventListener('click', () => {
-      //   const modal = document.getElementById('forward-modal');
-      //   const forwardList = document.getElementById('forward-user-list');
+    // // ws.current = new WebSocket(`ws://${window.location.host}`);
+    // ws.current = new WebSocket(`ws://localhost:3000/`);
 
-      //   // Clear the previous user list
-      //   forwardList.innerHTML = '';
+    // ws.current.onopen = async () => {
+    //   console.log("WebSocket connection opened.");
+    //   await generateKeyPair();
+    //   setRetryAttempts(0);
 
-      //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
-      //   onlineUsers.forEach(user => {
-      //     if (user !== username && user && user.trim() !== 'undefined') {
-      //       const option = document.createElement('option');
-      //       option.value = user;
-      //       option.textContent = user;
-      //       forwardList.appendChild(option);
-      //     }
-      //   });
+    //   if (ws.current) {
+    //     console.log("onmessage event inside the open is added.");
+    //     ws.current.onmessage = async (event) => {
+    //       console.log("Received WebSocket message:", event.data);
+    //     };
+    //   }
 
-      //   // Show the modal to select the user for forwarding
-      //   modal.style.display = 'block';
-      // });
+    //   // document.getElementById('forward-file').addEventListener('click', () => {
+    //   //   const modal = document.getElementById('forward-modal');
+    //   //   const forwardList = document.getElementById('forward-user-list');
 
-      // Forwarding the selected message to the chosen user
-      // document.getElementById('forward-btn').addEventListener('click', () => {
-      //   const selectedUser = document.getElementById('forward-user-list').value;
+    //   //   // Clear the previous user list
+    //   //   forwardList.innerHTML = '';
 
-      //   selectedMessages.forEach(message => {
-      //     // Forwarding the message to the selected user
-      //     ws.current.send(JSON.stringify({
-      //       type: 'forwardMessage',
-      //       data: {
-      //         originalMessage: message,
-      //         forwardTo: selectedUser
-      //       }
-      //     }));
+    //   //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
+    //   //   onlineUsers.forEach(user => {
+    //   //     if (user !== username && user && user.trim() !== 'undefined') {
+    //   //       const option = document.createElement('option');
+    //   //       option.value = user;
+    //   //       option.textContent = user;
+    //   //       forwardList.appendChild(option);
+    //   //     }
+    //   //   });
 
-      //     // Display the message in the chatbox as a forwarded message
-      //     displayMessage('You (Forwarded)', message);
-      //   });
+    //   //   // Show the modal to select the user for forwarding
+    //   //   modal.style.display = 'block';
+    //   // });
 
-      //   // Hide the modal after forwarding
-      //   document.getElementById('forward-modal').style.display = 'none';
-      //   selectedMessages = []; // Clear selected messages
-      // });
-    };
+    //   // Forwarding the selected message to the chosen user
+    //   // document.getElementById('forward-btn').addEventListener('click', () => {
+    //   //   const selectedUser = document.getElementById('forward-user-list').value;
 
-    if (!ws.current) {
-      console.log("WebSocket is not yet established.");
-      return;
-    }
-    console.log("onmessage event listener added");
-    ws.current.onmessage = (event) => {
-      console.log("Received WebSocket message:");
-      const parsedMessage = JSON.parse(event.data);
-      console.log(parsedMessage);
+    //   //   selectedMessages.forEach(message => {
+    //   //     // Forwarding the message to the selected user
+    //   //     ws.current.send(JSON.stringify({
+    //   //       type: 'forwardMessage',
+    //   //       data: {
+    //   //         originalMessage: message,
+    //   //         forwardTo: selectedUser
+    //   //       }
+    //   //     }));
 
-      if (parsedMessage.type === "client_update") {
-        addOnlineUser(
-          parsedMessage.clients.map(
-            (client: Client) =>
-              new User(
-                client["client-id"],
-                client["public-key"],
-                client["username"]
-              )
-          )
-        );
-      } else if (parsedMessage.type === "chat") {
-        // try {
-        //   varifyChat(parsedMessage.chat);
-        //   console.log('Received chat message:', parsedMessage.chat);
-        //   console.log('Received symm_keys:', parsedMessage.symm_keys);
-        //   console.log('Received iv:', parsedMessage.iv);
-        //   const decryptedMessage = decryptWithAES(parsedMessage.chat, parsedMessage.symm_keys[0], parsedMessage.iv);
-        //   console.log(decryptedMessage);
-        //   console.log('Received chat message:', decryptedMessage);
-        //   updateUsers(decryptedMessage);
-        // } catch (error) {
-        //   console.error("Error decrypting message:", error);
-        // }
-        // } else if (parsedMessage.type === "publicKey") {
-        //   serverPublicKeyPem = parsedMessage.key; // Set the public key
-      } else if (parsedMessage.type === "fileTransfer") {
-        if (parsedMessage.fileName && parsedMessage.from) {
-          const messageId = `${parsedMessage.from}-${parsedMessage.fileName}`;
-          if (parsedMessage.from !== username) {
-            processedFileMessages.push(messageId);
-            console.log("Received file with id: ", messageId);
-            setMessages((prev) => [
-              ...prev,
-              new Message(
-                new User(parsedMessage.from, ""),
-                parsedMessage.fileName,
-                parsedMessage.fileLink
-              ),
-            ]);
-          }
-        }
-      } else if (parsedMessage.type === "signed_data") {
-        const data = parsedMessage.data;
-        if (data.type === "public_chat") {
-          console.log("Received public chat message:", parsedMessage.message);
-          setMessages((prev) => [
-            ...prev,
-            new Message(new User("Group Chat", ""), parsedMessage.message),
-          ]);
-        }
-      }
+    //   //     // Display the message in the chatbox as a forwarded message
+    //   //     displayMessage('You (Forwarded)', message);
+    //   //   });
 
-      if (ws.current) {
-        ws.current.onerror = (error) => {
-          console.error("WebSocket error:", error);
-        };
+    //   //   // Hide the modal after forwarding
+    //   //   document.getElementById('forward-modal').style.display = 'none';
+    //   //   selectedMessages = []; // Clear selected messages
+    //   // });
+    // };
 
-        ws.current.onclose = () => {
-          console.log("WebSocket connection closed");
-          // setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
-        };
-      }
-    };
+    // if (!ws.current) {
+    //   console.log("WebSocket is not yet established.");
+    //   return;
+    // }
+    // console.log("onmessage event listener added");
+    // ws.current.onmessage = (event) => {
+    //   console.log("Received WebSocket message:");
+    //   const parsedMessage = JSON.parse(event.data);
+    //   console.log(parsedMessage);
 
-    return () => {
-      ws.current?.close();
-    };
+    //   if (parsedMessage.type === "client_update") {
+    //     addOnlineUser(
+    //       parsedMessage.clients.map(
+    //         (client: Client) =>
+    //           new User(
+    //             client["client-id"],
+    //             client["public-key"],
+    //             client["username"]
+    //           )
+    //       )
+    //     );
+    //   } else if (parsedMessage.type === "chat") {
+    //     // try {
+    //     //   varifyChat(parsedMessage.chat);
+    //     //   console.log('Received chat message:', parsedMessage.chat);
+    //     //   console.log('Received symm_keys:', parsedMessage.symm_keys);
+    //     //   console.log('Received iv:', parsedMessage.iv);
+    //     //   const decryptedMessage = decryptWithAES(parsedMessage.chat, parsedMessage.symm_keys[0], parsedMessage.iv);
+    //     //   console.log(decryptedMessage);
+    //     //   console.log('Received chat message:', decryptedMessage);
+    //     //   updateUsers(decryptedMessage);
+    //     // } catch (error) {
+    //     //   console.error("Error decrypting message:", error);
+    //     // }
+    //     // } else if (parsedMessage.type === "publicKey") {
+    //     //   serverPublicKeyPem = parsedMessage.key; // Set the public key
+    //   } else if (parsedMessage.type === "fileTransfer") {
+    //     if (parsedMessage.fileName && parsedMessage.from) {
+    //       const messageId = `${parsedMessage.from}-${parsedMessage.fileName}`;
+    //       if (parsedMessage.from !== username) {
+    //         processedFileMessages.push(messageId);
+    //         console.log("Received file with id: ", messageId);
+    //         setMessages((prev) => [
+    //           ...prev,
+    //           new Message(
+    //             new User(parsedMessage.from, ""),
+    //             parsedMessage.fileName,
+    //             parsedMessage.fileLink
+    //           ),
+    //         ]);
+    //       }
+    //     }
+    //   } else if (parsedMessage.type === "signed_data") {
+    //     const data = parsedMessage.data;
+    //     if (data.type === "public_chat") {
+    //       console.log("Received public chat message:", parsedMessage.message);
+    //       setMessages((prev) => [
+    //         ...prev,
+    //         new Message(new User("Group Chat", ""), parsedMessage.message),
+    //       ]);
+    //     }
+    //   }
+
+    //   if (ws.current) {
+    //     ws.current.onerror = (error) => {
+    //       console.error("WebSocket error:", error);
+    //     };
+
+    //     ws.current.onclose = () => {
+    //       console.log("WebSocket connection closed");
+    //       // setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
+    //     };
+    //   }
+    // };
+
+    // return () => {
+    //   ws.current?.close();
+    // };
   }, [retryAttempts]);
 
   //#region Functions
   const generateKeyPair = async () => {
-    if (!ws.current) {
-      console.error("WebSocket connection not established.");
-      return;
-    }
+    // if (!ws.current) {
+    //   console.error("WebSocket connection not established.");
+    //   return;
+    // }
 
     const keyPair = await window.crypto.subtle.generateKey(
       {
@@ -238,7 +256,7 @@ export default function ChatSystem() {
       },
     };
 
-    ws.current.send(JSON.stringify(helloMessage));
+    // ws.current.send(JSON.stringify(helloMessage));
 
     privateKey.current = keyPair.privateKey;
     publicKey.current = publicKeyBase64;
@@ -266,6 +284,10 @@ export default function ChatSystem() {
     setUsername(username);
     setRetryAttempts(1);
   };
+
+  const sendMessage=(message: string) => {
+    socket.emit("message", message)
+  };
   //#endregion
 
   //#region Render
@@ -282,7 +304,7 @@ export default function ChatSystem() {
             className="flex flex-col md:flex-row h-[calc(100vh-2rem)] gap-4"
           >
             <Sidebar onlineUsers={onlineUsers} />
-            <Chatbox messages={messages} />
+            <Chatbox messages={messages} sendMessage={sendMessage} />
           </motion.div>
         ) : (
           <motion.div

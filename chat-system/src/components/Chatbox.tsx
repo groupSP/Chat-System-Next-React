@@ -23,13 +23,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 interface ChatboxProps {
   // onForward: () => void;
   messages: Message[];
+  sendMessage: (mesasge: string) => void;
 }
 
-export default function Chatbox({ messages }: ChatboxProps) {
+export default function Chatbox({ messages, sendMessage }: ChatboxProps) {
   const [message, setMessage] = useState("");
   const [recipient, setRecipient] = useState("group");
 
   const handleSendMessage = () => {
+    sendMessage(message);
     console.log(`Sending message: ${message} to ${recipient}`);
     setMessage("");
   };

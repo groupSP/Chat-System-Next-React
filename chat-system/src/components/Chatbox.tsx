@@ -63,7 +63,11 @@ export default function Chatbox({
               {messages.map((message, index) => (
                 <li
                   key={index}
-                  className="flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 bg-slate-100"
+                  className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
+                    message.sender.id === userID
+                      ? "bg-green-200"
+                      : "bg-slate-100"
+                  }`}
                 >
                   <div className="flex-shrink-0">
                     <Avatar>
@@ -71,9 +75,7 @@ export default function Chatbox({
                         src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
                         alt={message.displayName()}
                       />
-                      <AvatarFallback>
-                        {message.displayName()}
-                      </AvatarFallback>
+                      <AvatarFallback>{message.displayName()}</AvatarFallback>
                     </Avatar>
                   </div>
                   <div className="flex-grow">
@@ -81,9 +83,7 @@ export default function Chatbox({
                       <span className="font-semibold text-gray-500 text-sm">
                         {message.displayName()}
                       </span>
-                      <span className="font-sans mt-1">
-                        {message.content}
-                      </span>
+                      <span className="font-sans mt-1">{message.content}</span>
                     </div>
                   </div>
                 </li>

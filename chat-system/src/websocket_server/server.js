@@ -19,10 +19,12 @@ app.use("/files", express.static(UPLOAD_DIR));
 
 // Multer configuration for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (req, file, cb) =>
+  {
     cb(null, UPLOAD_DIR);
   },
-  filename: (req, file, cb) => {
+  filename: (req, file, cb) =>
+  {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname)); // Save the file with a unique name
   },
@@ -42,7 +44,8 @@ let publicKey;
 //#endregion
 
 //#region Encryption
-function decryptAESKey(encryptedKey) {
+function decryptAESKey(encryptedKey)
+{
   try {
     const decrypted = crypto.privateDecrypt(
       {
@@ -60,7 +63,8 @@ function decryptAESKey(encryptedKey) {
 }
 
 // AES Encryption
-function encryptWithAES(data, aesKey, iv) {
+function encryptWithAES(data, aesKey, iv)
+{
   const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
   let encrypted = cipher.update(data, "utf8", "base64");
   encrypted += cipher.final("base64");
@@ -68,7 +72,8 @@ function encryptWithAES(data, aesKey, iv) {
 }
 
 // AES Decryption
-function decryptWithAES(encryptedData, aesKey, iv) {
+function decryptWithAES(encryptedData, aesKey, iv)
+{
   const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
   let decrypted = decipher.update(encryptedData, "base64", "utf8");
   decrypted += decipher.final("utf8");
@@ -76,16 +81,19 @@ function decryptWithAES(encryptedData, aesKey, iv) {
 }
 
 // Generate random AES key and IV
-function generateAESKey() {
+function generateAESKey()
+{
   return crypto.randomBytes(32); // AES-256 key size
 }
 
-function generateIV() {
+function generateIV()
+{
   return crypto.randomBytes(16); // AES IV size
 }
 
 // Encrypt AES key with RSA public key
-function encryptAESKeyWithRSA(aesKey, recipientPublicKey) {
+function encryptAESKeyWithRSA(aesKey, recipientPublicKey)
+{
   return crypto
     .publicEncrypt(
       {
@@ -98,7 +106,8 @@ function encryptAESKeyWithRSA(aesKey, recipientPublicKey) {
     .toString("base64");
 }
 
-const generateKeyPair = async () => {
+const generateKeyPair = async () =>
+{
   const keyPair = await window.crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
@@ -164,7 +173,8 @@ const generateKeyPair = async () => {
 //   console.log("---Broadcast end---");
 // }
 
-function broadcastClientList() {
+function broadcastClientList()
+{
   console.log("Now broadcasting client list...");
   const clientUpdateMessage = {
     type: "client_update",
@@ -184,7 +194,8 @@ function broadcastClientList() {
   sendToAllClient(clientUpdateMessage);
 }
 
-function sendToAllClient(message) {
+function sendToAllClient(message)
+{
   console.log("Sending message to client: \n[");
   for (const key in clients) {
     console.log("   ", clients[key]["client-id"]);
@@ -192,7 +203,8 @@ function sendToAllClient(message) {
   console.log("]\n");
   const messageString = JSON.stringify(message);
   const clientArray = Object.values(clients);
-  clientArray.forEach((c) => {
+  clientArray.forEach((c) =>
+  {
     if (c.ws && c.ws.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       c.ws.send(messageString); // Send the message
@@ -202,14 +214,16 @@ function sendToAllClient(message) {
   console.log("Finished sending message to client.\n");
 }
 
-function sendToNeighbourhoodServers(message) {
+function sendToNeighbourhoodServers(message)
+{
   console.log(
     "Sending message to neighbourhood servers...\n",
     neighbourhoodServers
   );
   const messageString = JSON.stringify(message);
 
-  neighbourhoodServers.forEach((serverWs) => {
+  neighbourhoodServers.forEach((serverWs) =>
+  {
     if (serverWs.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       serverWs.send(messageString); // Send the message
@@ -220,15 +234,18 @@ function sendToNeighbourhoodServers(message) {
 }
 
 // Example of adding a neighbourhood server connection
-function addNeighbourhoodServer(serverUrl) {
+function addNeighbourhoodServer(serverUrl)
+{
   const serverWs = new WebSocket(serverUrl);
 
-  serverWs.onopen = () => {
+  serverWs.onopen = () =>
+  {
     console.log(`Connected to neighbourhood server: ${serverUrl}`);
     neighbourhoodServers.push(serverWs); // Store the WebSocket connection
   };
 
-  serverWs.onclose = () => {
+  serverWs.onclose = () =>
+  {
     console.log(`Disconnected from neighbourhood server: ${serverUrl}`);
     // Optionally remove the closed connection from the array
     const index = neighbourhoodServers.indexOf(serverWs);
@@ -237,12 +254,14 @@ function addNeighbourhoodServer(serverUrl) {
     }
   };
 
-  serverWs.onerror = (error) => {
+  serverWs.onerror = (error) =>
+  {
     console.error(`WebSocket error: ${error}`);
   };
 }
 
-function generateClientId(publicKey) {
+function generateClientId(publicKey)
+{
   const hash = crypto.createHash('sha256');
   hash.update(publicKey);
   const digest = hash.digest(); // returns a Buffer
@@ -253,7 +272,8 @@ function generateClientId(publicKey) {
 
 const wsClient = new WebSocket("ws://localhost:3000");
 
-wsClient.on("open", () => {
+wsClient.on("open", () =>
+{
   console.log("Connected to server on port 3000");
 
   // You can send messages to server 3000 like this:
@@ -268,16 +288,19 @@ wsClient.on("open", () => {
   );
 });
 
-wsClient.on("message", (message) => {
+wsClient.on("message", (message) =>
+{
   console.log("Received from server 3000:", message);
 });
 
-wsClient.on("close", () => {
+wsClient.on("close", () =>
+{
   console.log("Connection closed");
 });
 
 //#region WebSocket
-wss.on("connection", (ws) => {
+wss.on("connection", (ws) =>
+{
   // onlineUsers.add(ws);
   // const users = Array.from(onlineUsers);
   // const message = JSON.stringify({ type: 'onlineUsers', users });
@@ -290,14 +313,16 @@ wss.on("connection", (ws) => {
   //   sender: server.address().address
   // }));
 
-  ws.on("message", async (message) => {
+  ws.on("message", async (message) =>
+  {
     const parsedMessage = JSON.parse(message);
     console.log("Received message:", parsedMessage);
 
     if (parsedMessage.type === "client_update_request") {
       broadcastClientList();
     } else if (parsedMessage.type == "client_update") {
-      data.clients.forEach((client) => {
+      data.clients.forEach((client) =>
+      {
         clients[client["public-key"]] = {
           ws: clients[client["public-key"]]
             ? clients[client["public-key"]].ws
@@ -305,7 +330,7 @@ wss.on("connection", (ws) => {
           "client-id": client["client-id"],
         };
       });
-    } else if (parsedMessage.type ===  "signed_data") {
+    } else if (parsedMessage.type === "signed_data") {
       // Below must have parsedMessage.data
       const data = parsedMessage.data;
 
@@ -321,8 +346,8 @@ wss.on("connection", (ws) => {
         };
         // Broadcast updated client list to all clients
         broadcastClientList();
-      } else if (data.type == "public_chat") {
-        sendToAllClient(parsedMessage);
+        // } else if (data.type == "public_chat") {
+        //   sendToAllClient(parsedMessage);
       }
 
       // Handle client list requests
@@ -363,6 +388,8 @@ wss.on("connection", (ws) => {
           });
         }
       }
+      else
+        sendToAllClient(parsedMessage);
 
       //   else if (data.type === 'signed_data') {
       //     const sender = userName;
@@ -438,7 +465,8 @@ wss.on("connection", (ws) => {
     }
   });
 
-  ws.on("close", () => {
+  ws.on("close", () =>
+  {
     // delete clients[userName];
     // broadcastOnlineUsers();
   });
@@ -459,16 +487,19 @@ wss.on("connection", (ws) => {
 //   res.send('Server is running!');
 // });
 
-app.get("/public-key", (req, res) => {
+app.get("/public-key", (req, res) =>
+{
   res.json({ key: publicKey });
 });
 
 // Serve uploaded files with forced download
-app.get("/files/:filename", (req, res) => {
+app.get("/files/:filename", (req, res) =>
+{
   const fileName = req.params.filename;
   const filePath = path.join(__dirname, "uploads", fileName);
 
-  res.download(filePath, (err) => {
+  res.download(filePath, (err) =>
+  {
     if (err) {
       res.status(404).send("File not found.");
     }
@@ -476,7 +507,8 @@ app.get("/files/:filename", (req, res) => {
 });
 
 // File upload endpoint
-app.post("/upload", upload.single("file"), (req, res) => {
+app.post("/upload", upload.single("file"), (req, res) =>
+{
   if (!req.file) {
     return res.status(400).send("No file uploaded.");
   }
@@ -484,7 +516,8 @@ app.post("/upload", upload.single("file"), (req, res) => {
   res.send({ fileName });
 });
 
-app.post("/api/upload", upload.single("file"), (req, res) => {
+app.post("/api/upload", upload.single("file"), (req, res) =>
+{
   if (!req.file) {
     return res.status(400).send("No file uploaded");
   }
@@ -536,7 +569,8 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
 // runServer();
 
 // PORT = 3001;
-server.listen(PORT, () => {
+server.listen(PORT, () =>
+{
   console.log(`> Server started on port ${PORT}`);
 });
 //#endregion

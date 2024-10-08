@@ -31,10 +31,12 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
                   className="flex items-center space-x-4"
                 >
                   <Avatar>
-                    <AvatarImage
-                      src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`}
-                      alt={username}
-                    />
+                    {user.isOnline && (
+                      <AvatarImage
+                        src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`}
+                        alt={username}
+                      />
+                    )}
                     <AvatarFallback>
                       {username.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
@@ -43,7 +45,7 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
                     <HoverCardTrigger>
                       <Button variant="link">{username}</Button>
                     </HoverCardTrigger>
-                    <HoverCardContent className="rounded-xl w-100">
+                    <HoverCardContent className={`rounded-xl w-100 ${!user.isOnline && "bg-gray-500"}`}>
                       <p>ID: {user.id}</p>
                       <br />
                       <p>PublicKey: {user.publicKey.slice(0, 30)}...</p>

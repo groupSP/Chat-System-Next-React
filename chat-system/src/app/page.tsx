@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Chatbox from "@/components/Chatbox";
 import LoginContainer from "@/components/LoginContainer";
@@ -12,6 +12,7 @@ export class User {
   id: string;
   publicKey: string;
   username?: string;
+  isOnline: boolean = true;
 
   constructor(id: string, publicKey: string, username?: string) {
     this.id = id;
@@ -54,9 +55,15 @@ export default function ChatSystem() {
   const [username, setUsername] = useState("");
   const [userID, setUserID] = useState("");
   const [retryAttempts, setRetryAttempts] = useState(0);
-  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
+
+  const onlineUsersRef = useRef<User[]>([]);
+  const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    onlineUsersRef.current = onlineUsers;
+  }, [onlineUsers]);
 
   useEffect(() => {
     if (retryAttempts === 0) return;
@@ -96,7 +103,7 @@ export default function ChatSystem() {
       //   forwardList.innerHTML = '';
 
       //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
-      //   onlineUsers.forEach(user => {
+      //   onlineUsersRef.forEach(user => {
       //     if (user !== username && user && user.trim() !== 'undefined') {
       //       const option = document.createElement('option');
       //       option.value = user;
@@ -183,16 +190,24 @@ export default function ChatSystem() {
         console.log("Received a signed data");
         const data = parsedMessage.data;
         if (data.type === "public_chat") {
-          console.log("Received public chat message:", parsedMessage.message);
           setMessages((prev) => [
             ...prev,
             new Message(
-              onlineUsers.find((user) => user.publicKey === data.sender) ??
-                new User("Unknown", "Unknown"),
+              onlineUsersRef.current.find(
+                (user) => user.publicKey === data.sender
+              ) ?? new User("Unknown", "Unknown"),
               data.message
             ), // the group chat need to be changed
           ]);
         }
+      } else if (parsedMessage.type === "disconnect") {
+        setOnlineUsers((prev) =>
+          prev.map((user) =>
+            user.id === parsedMessage.userID
+              ? { ...user, isOnline: false }
+              : user
+          )
+        );
       }
 
       if (ws) {
@@ -208,6 +223,7 @@ export default function ChatSystem() {
     };
 
     return () => {
+      ws.send(JSON.stringify({ type: "disconnect", userID: userID }));
       ws?.close();
     };
   }, [ws]);
@@ -238,17 +254,7 @@ export default function ChatSystem() {
       return;
     }
 
-    // const keyPair = await window.crypto.subtle.generateKey(
-    //   {
-    //     name: "RSA-OAEP",
-    //     modulusLength: 2048,
-    //     publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
-    //     hash: { name: "SHA-256" },
-    //   },
-    //   true,
-    //   ["encrypt", "decrypt"]
-    // );
-    const keyPair = await await window.crypto.subtle.generateKey(
+    const keyPair = await window.crypto.subtle.generateKey(
       {
         name: "RSA-PSS",
         modulusLength: 2048,
@@ -294,10 +300,10 @@ export default function ChatSystem() {
   };
 
   const addOnlineUser = (user: User[]) => {
-    const allUsers = [...onlineUsers];
+    const allUsers = [...onlineUsersRef.current];
     user.forEach((addUser) => {
       if (allUsers.some((u) => u.publicKey === addUser.publicKey)) {
-        const index = onlineUsers.findIndex(
+        const index = onlineUsersRef.current.findIndex(
           (u) => u.publicKey === addUser.publicKey
         );
         allUsers[index].id = addUser.id;
@@ -307,7 +313,7 @@ export default function ChatSystem() {
           setUsername(allUsers[index].username);
       } else allUsers.push(addUser);
     });
-    // console.log("Online users:", allUsers);
+    console.log("Online users:", allUsers);
     setOnlineUsers(allUsers);
   };
 

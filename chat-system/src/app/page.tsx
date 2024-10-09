@@ -7,6 +7,7 @@ import LoginContainer from "@/components/LoginContainer";
 import ForwardModal from "@/components/ForwardModal";
 import { AnimatePresence, motion } from "framer-motion";
 import { SignMessage } from "./api/Crypto";
+import { toast } from "sonner";
 
 export class User {
   id: string;
@@ -55,7 +56,7 @@ export default function ChatSystem() {
   const [username, setUsername] = useState("");
   const [userID, setUserID] = useState("");
   const [retryAttempts, setRetryAttempts] = useState(0);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messageList, setMessageList] = useState<Message[]>([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
 
   const onlineUsersRef = useRef<User[]>([]);
@@ -136,7 +137,7 @@ export default function ChatSystem() {
 
       //   // Hide the modal after forwarding
       //   document.getElementById('forward-modal').style.display = 'none';
-      //   selectedMessages = []; // Clear selected messages
+      //   selectedMessages = []; // Clear selected messageList
       // });
     };
 
@@ -176,7 +177,7 @@ export default function ChatSystem() {
           if (parsedMessage.from !== username) {
             processedFileMessages.push(messageId);
             console.log("Received file with id: ", messageId);
-            setMessages((prev) => [
+            setMessageList((prev) => [
               ...prev,
               new Message(
                 new User(parsedMessage.from, ""),
@@ -190,7 +191,7 @@ export default function ChatSystem() {
         console.log("Received a signed data");
         const data = parsedMessage.data;
         if (data.type === "public_chat") {
-          setMessages((prev) => [
+          setMessageList((prev) => [
             ...prev,
             new Message(
               onlineUsersRef.current.find(
@@ -216,20 +217,47 @@ export default function ChatSystem() {
         };
 
         ws.onclose = () => {
-          console.log("WebSocket connection closed");
+          // alert("Closing connection");
           // setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
         };
       }
     };
 
     return () => {
-      ws.send(JSON.stringify({ type: "disconnect", userID: userID }));
       ws?.close();
     };
   }, [ws]);
   //#endregion
 
   //#region Functions
+  const sendFile = (fileName: string, recipient: string, fileLink: string) => {
+    ws?.send(
+      JSON.stringify({
+        type: "fileTransfer",
+        fileName,
+        from: userID,
+        to: recipient,
+        timestamp: new Date().toISOString(),
+        fileLink,
+      })
+    );
+
+    setMessageList((prev) => [
+      ...prev,
+      new Message(
+        new User(userID, publicKey.current, username),
+        fileName,
+        fileLink
+      ),
+    ]);
+  };
+
+  const setOffline = () => {
+    if (!ws) return;
+    toast.success("Disconnected");
+    ws.send(JSON.stringify({ type: "disconnect", userID: userID }));
+  };
+
   const signData = async (data: any) => {
     return {
       type: "signed_data",
@@ -342,11 +370,13 @@ export default function ChatSystem() {
           >
             <Sidebar onlineUsers={onlineUsers} />
             <Chatbox
-              messages={messages}
+              messageList={messageList}
               sendMessage={sendMessage}
               username={username}
               userID={userID}
               onlineUsers={onlineUsers}
+              setOffline={setOffline}
+              sendFile={sendFile}
             />
           </motion.div>
         ) : (

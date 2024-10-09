@@ -31,21 +31,24 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
                   className="flex items-center space-x-4"
                 >
                   <Avatar>
-                    {user.isOnline && (
-                      <AvatarImage
-                        src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`}
-                        alt={username}
-                      />
-                    )}
+                    <AvatarImage
+                      src={`https://api.dicebear.com/6.x/initials/svg?seed=${username}`}
+                      alt={username}
+                    />
                     <AvatarFallback>
                       {username.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <HoverCard>
                     <HoverCardTrigger>
-                      <Button variant="link">{username}</Button>
+                      <Button
+                        variant="link"
+                        className={`${!user.isOnline && "text-gray-500"}`}
+                      >
+                        {username}
+                      </Button>
                     </HoverCardTrigger>
-                    <HoverCardContent className={`rounded-xl w-100 ${!user.isOnline && "bg-gray-500"}`}>
+                    <HoverCardContent className="rounded-xl w-100">
                       <p>ID: {user.id}</p>
                       <br />
                       <p>PublicKey: {user.publicKey.slice(0, 30)}...</p>

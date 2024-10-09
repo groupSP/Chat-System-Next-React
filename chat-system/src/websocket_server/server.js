@@ -374,7 +374,7 @@ wss.on("connection", (ws) =>
           clients[data.to].send(
             JSON.stringify({
               type: "fileTransfer",
-              from: userName,
+              from: userID,
               fileName: data.fileName,
               fileLink: fileLink,
             })
@@ -382,7 +382,7 @@ wss.on("connection", (ws) =>
         } else {
           broadcast({
             type: "fileTransfer",
-            from: userName,
+            from: userID,
             fileName: data.fileName,
             fileLink: fileLink,
           });
@@ -390,19 +390,6 @@ wss.on("connection", (ws) =>
       }
       else
         sendToAllClient(parsedMessage);
-
-      //   else if (data.type === 'signed_data') {
-      //     const sender = userName;
-      //     const { data: signedData, counter, signature } = data;
-      //     // Check if the counter is greater than the last known counter
-      //     if (messageCounters[sender] >= counter) {
-      //       console.error('Replay attack detected! Counter is not greater than the last value.');
-      //       return; // Reject the message
-      //     }
-
-      //     // Update the last known counter
-      //     messageCounters[sender] = counter;
-      //   }
 
       //   // Handle forwarding messages (for text only)
       //   else if (data.type === 'forwardMessage') {
@@ -463,6 +450,8 @@ wss.on("connection", (ws) =>
       //     }
       //   }
     }
+    else
+      sendToAllClient(parsedMessage);
   });
 
   ws.on("close", () =>

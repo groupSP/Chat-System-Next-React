@@ -29,11 +29,7 @@ interface ChatboxProps {
   userID: string;
   onlineUsers: User[];
   setOffline: () => void;
-  sendFile: (
-    fileName: string,
-    recipient: string,
-    fileLink: string
-  ) => void;
+  sendFile: (fileName: string, recipient: string, fileLink: string) => void;
 }
 
 interface UploadResponse {
@@ -69,7 +65,7 @@ export default function Chatbox({
 
     try {
       const response = await axios.post<UploadResponse>(
-        "/api/upload",
+        "/upload",
         formData,
         {
           headers: {
@@ -90,7 +86,7 @@ export default function Chatbox({
   };
 
   return (
-    <Card className="w-full md:w-2/3 lg:w-3/4 flex flex-col">
+    <Card className="w-full flex flex-col">
       <CardHeader>
         <CardTitle className="font-thin pb-1">username: {username}</CardTitle>
         <CardTitle className="font-thin pb-4">userID: {userID}</CardTitle>
@@ -145,6 +141,9 @@ export default function Chatbox({
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Type your message..."
             className="flex-grow"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSendMessage();
+            }}
           />
           <Select value={recipient} onValueChange={setRecipient}>
             <SelectTrigger className="w-[180px]">

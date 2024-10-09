@@ -35,6 +35,9 @@ export default function LoginContainer({ onLogin }: LoginContainerProps) {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your name"
               className="text-lg"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onLogin(username);
+              }}
             />
             <Button
               onClick={() => onLogin(username)}

@@ -15,7 +15,7 @@ import {
   verifySignature,
   decryptAESKey,
   decryptWithAES,
-  arrayBufferToBase64
+  arrayBufferToBase64,
 } from "../utils/crypto";
 import { toast } from "sonner";
 
@@ -66,7 +66,8 @@ let processedFileMessages: string[] = [];
 //#region ChatSystem
 export default function ChatSystem() {
   const publicKey = useRef("");
-  const privateKey = useRef<CryptoKey | null>(null);
+  const publicKeyCrypto = useRef<CryptoKey | null>(null);
+  const privateKeyCrypto = useRef<CryptoKey | null>(null);
   const aesKey = useRef<CryptoKey | null>(null);
   const iv = useRef<Uint8Array | null>(null);
 
@@ -223,17 +224,23 @@ export default function ChatSystem() {
               new User("public_chat")
             ), // the group chat need to be changed
           ]);
-        }
-        else if(data.type === "chat"){
+        } else if (data.type === "chat") {
           console.log("Received encrypted chat message:", data.chat);
           console.log("Received symm_keys:", data.symm_keys);
           console.log("Received iv:", data.iv);
-          decryptWithAES(data.chat, data.symm_keys[0], data.iv, privateKey.current!).then((decryptedMessage) => {
-            console.log(decryptedMessage);
-            console.log("Received decrypted chat message:", decryptedMessage);
-          }).catch((error) => {
-            console.error("Error decrypting message:", error);
-          });
+          decryptWithAES(
+            data.chat,
+            data.symm_keys[0],
+            data.iv,
+            privateKeyCrypto.current!
+          )
+            .then((decryptedMessage) => {
+              console.log(decryptedMessage);
+              console.log("Received decrypted chat message:", decryptedMessage);
+            })
+            .catch((error) => {
+              console.error("Error decrypting message:", error);
+            });
         }
       } else if (parsedMessage.type === "client_list") {
         if (!queuedMessage.current) return;
@@ -265,7 +272,11 @@ export default function ChatSystem() {
             "Recipient not found on any server.",
             queuedMessage.current.recipient
           );
-        sendPrivateMessage(queuedMessage.current, recipientServer, recipientServer['server_id']);
+        sendPrivateMessage(
+          queuedMessage.current,
+          recipientServer,
+          recipientServer["server_id"]
+        );
         queuedMessage.current = null;
       } else if (parsedMessage.type === "disconnect") {
         setOnlineUsers((prev) =>
@@ -306,45 +317,44 @@ export default function ChatSystem() {
       return;
     }
 
+    // 1. Find the recipient's public key
     const recipient = onlineUsersRef.current.find(
       (user) => user.id === message.recipient.id
     );
     if (!recipient || !recipient.publicKey) {
       console.error("Recipient not found or lacks a public key.");
-      console.log("Recipient:", recipient);
       return;
     }
 
+    // 2. Import the recipient's public key (from Base64) to use in RSA-OAEP encryption
     const recipientPublicKey = await importRSAPublicKey(recipient.publicKey);
 
-    // Encrypt the message content
+    // 3. Encrypt the message content using AES-GCM
     const encryptedMessage = await encryptAES(message.content, aesKey.current, iv.current!);
 
-    // Encrypt the AES key using RSA
-    const encryptedAESKey = await encryptAESKeyWithRSA(
-      aesKey.current,
-      recipientPublicKey
-    );
+    // 4. Encrypt the AES key using RSA-OAEP with the recipient's public RSA key
+    const encryptedAESKey = await encryptAESKeyWithRSA(aesKey.current, recipientPublicKey);
 
-    // Encode IV as Base64
+    // 5. Encode the IV as Base64
     const ivBase64 = arrayBufferToBase64(iv.current!);
 
+    // 6. Create the private message with the encrypted message and encrypted AES key
     const privateMessage = await signData({
       type: "chat",
-      destination_servers: [recipientServer], // Server to which the recipient is connected
+      destination_servers: [recipientServer],
       iv: ivBase64, // Base64 encoded IV
-      symm_keys: [encryptedAESKey], // AES key encrypted with the recipient's public RSA key
-      chat: encryptedMessage, // Base64 encoded AES encrypted message
+      symm_keys: [encryptedAESKey], // AES key encrypted with recipient's RSA key
+      chat: encryptedMessage, // Base64 encoded AES-encrypted message
       client_info: {
-        "client-id": userID, // Your client ID
-        "server-id": serverID, // Your server's address
+        "client-id": userID, // Sender's client ID
+        "server-id": serverID, // Sender's server ID
       },
-      time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expires in 1 minute
+      time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expiration time
     });
 
+    // 7. Send the private message over WebSocket
     ws.send(JSON.stringify(privateMessage));
   };
-
 
   // Helper function to sign the message (using RSA-PSS and SHA-256)
   // async function signMessage(message: string, counter: number) {
@@ -353,7 +363,7 @@ export default function ChatSystem() {
   //   const data = encoder.encode(dataToSign);
   //   const signature = await window.crypto.subtle.sign(
   //     { name: "RSA-PSS", saltLength: 32 },
-  //     privateKey.current!, // Your private key
+  //     privateKeyCrypto.current!, // Your private key
   //     data
   //   );
   //   return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
@@ -393,7 +403,7 @@ export default function ChatSystem() {
       type: "signed_data",
       data: data,
       counter: counter.current++,
-      signature: await SignMessage(data, counter.current, privateKey.current!),
+      signature: await SignMessage(data, counter.current, privateKeyCrypto.current!),
     };
   };
 
@@ -412,6 +422,7 @@ export default function ChatSystem() {
       return;
     }
 
+    // Generate RSA key pair for signing (use RSA-PSS for signing)
     const keyPair = await window.crypto.subtle.generateKey(
       {
         name: "RSA-PSS",
@@ -419,24 +430,31 @@ export default function ChatSystem() {
         publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
         hash: { name: "SHA-256" },
       },
-      true,
-      ["sign", "verify"]
-    );
-    const publicKeyTem = await window.crypto.subtle.exportKey(
-      "spki",
-      keyPair.publicKey
+      true, // Can extract the key for export
+      ["sign", "verify"] // For signing and verifying signatures
     );
 
+    // Store the keys as CryptoKey objects
+    publicKeyCrypto.current = keyPair.publicKey;
+    privateKeyCrypto.current = keyPair.privateKey;
+
+    // If you need to send the public key to others, convert it to PEM/Base64
+    const publicKeyTem = await window.crypto.subtle.exportKey(
+      "spki",
+      publicKeyCrypto.current!
+    );
     const publicKeyBase64 = btoa(
       String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
     );
 
-    publicKey.current = publicKeyBase64;
-    privateKey.current = keyPair.privateKey;
+    // Set publicKeyBase64 as the network-friendly representation
+    publicKey.current = publicKeyBase64; // Use this to share over the network
+
     if (!username) setUsername("Anonymous");
 
     setUserID(await computeFingerprint());
 
+    // Generate AES key for encryption and random IV
     aesKey.current = await generateAESKey();
     iv.current = window.crypto.getRandomValues(new Uint8Array(16));
   };
@@ -503,7 +521,7 @@ export default function ChatSystem() {
   return (
     <div className="container mx-auto p-4 min-h-screen bg-background text-foreground">
       <AnimatePresence mode="wait">
-        {privateKey.current ? (
+        {privateKeyCrypto.current ? (
           <motion.div
             key="chat"
             initial={{ opacity: 0, y: 20 }}

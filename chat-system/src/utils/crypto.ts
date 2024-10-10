@@ -146,7 +146,7 @@ function pemToArrayBuffer(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
   bytes.forEach((b) => (binary += String.fromCharCode(b)));
@@ -218,3 +218,130 @@ export async function verifySignature(
     encoded
   );
 }
+
+// Helper to generate random bytes
+export const randomBytes = (size: number): Uint8Array => {
+  const array = new Uint8Array(size);
+  window.crypto.getRandomValues(array);
+  return array;
+};
+
+// Function to encrypt data with AES (AES-GCM mode)
+export const encryptWithAES = async (data: string, aesKey: CryptoKey, iv: Uint8Array): Promise<string> => {
+  const encoder = new TextEncoder();
+  const encodedData = encoder.encode(data);
+
+  const encrypted = await window.crypto.subtle.encrypt(
+    {
+      name: "AES-GCM",
+      iv: iv, // Initialization vector
+    },
+    aesKey,
+    encodedData
+  );
+
+  return arrayBufferToBase64(encrypted); // Convert encrypted ArrayBuffer to Base64
+};
+
+// Function to encrypt AES key with RSA-OAEP
+// export const encryptAESKeyWithRSA = async (aesKey: Uint8Array, recipientPublicKey: CryptoKey): Promise<string> => {
+//   const encryptedAESKey = await window.crypto.subtle.encrypt(
+//     {
+//       name: "RSA-OAEP",
+//     },
+//     recipientPublicKey, // Recipient's public RSA key
+//     aesKey // AES key to encrypt
+//   );
+
+//   return arrayBufferToBase64(encryptedAESKey);
+// };
+
+// Function to generate AES key
+// export const generateAESKey = async (): Promise<CryptoKey> => {
+//   return await window.crypto.subtle.generateKey(
+//     {
+//       name: "AES-GCM",
+//       length: 256, // AES-256
+//     },
+//     true, // Extractable key
+//     ["encrypt", "decrypt"]
+//   );
+// };
+
+// Function to generate RSA key pair (for encryption using RSA-OAEP)
+export const generateRSAKeyPair = async (): Promise<CryptoKeyPair> => {
+  return await window.crypto.subtle.generateKey(
+    {
+      name: "RSA-OAEP",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+      hash: { name: "SHA-256" }, // Use SHA-256 for hashing
+    },
+    true, // Keys should be extractable for exporting
+    ["encrypt", "decrypt"] // For encrypting and decrypting
+  );
+};
+
+// // Convert ArrayBuffer to Base64
+// const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
+//   const binary = String.fromCharCode(...new Uint8Array(buffer));
+//   return btoa(binary);
+// };
+
+export const decryptAESKey = async (
+  encryptedAESKey: string,
+  privateKey: CryptoKey
+): Promise<ArrayBuffer> => {
+  const encryptedKeyArray = Uint8Array.from(atob(encryptedAESKey), (c) =>
+    c.charCodeAt(0)
+  );
+
+  // Decrypt the AES key using RSA-OAEP
+  return await window.crypto.subtle.decrypt(
+    {
+      name: "RSA-OAEP",
+    },
+    privateKey, // Your RSA private key
+    encryptedKeyArray // Encrypted AES key
+  );
+};
+
+// Function to decrypt AES-encrypted data
+export const decryptWithAES = async (
+  encryptedMessage: string,
+  encryptedAESKey: string, // Base64 encoded AES key, encrypted with RSA
+  iv: string, // Base64 encoded Initialization Vector
+  privateKey: CryptoKey // Your RSA private key
+): Promise<string> => {
+  // First, decode the Base64 strings back to Uint8Array
+  const ivArray = Uint8Array.from(atob(iv), (c) => c.charCodeAt(0));
+  const encryptedMessageArray = Uint8Array.from(atob(encryptedMessage), (c) =>
+    c.charCodeAt(0)
+  );
+
+  // Decrypt the AES key
+  const decryptedAESKey = await decryptAESKey(encryptedAESKey, privateKey);
+
+  // Import the decrypted AES key for usage in AES-GCM decryption
+  const aesKey = await window.crypto.subtle.importKey(
+    "raw", // Importing the raw AES key
+    decryptedAESKey, // The decrypted AES key
+    "AES-GCM", // Algorithm used
+    false, // Non-extractable
+    ["decrypt"] // Usage for decryption
+  );
+
+  // Perform the decryption using the AES key, IV, and encrypted message
+  const decrypted = await window.crypto.subtle.decrypt(
+    {
+      name: "AES-GCM",
+      iv: ivArray, // Initialization Vector
+    },
+    aesKey, // The imported AES key
+    encryptedMessageArray // The actual encrypted message
+  );
+
+  // Convert the decrypted ArrayBuffer to string
+  const decoder = new TextDecoder();
+  return decoder.decode(decrypted);
+};

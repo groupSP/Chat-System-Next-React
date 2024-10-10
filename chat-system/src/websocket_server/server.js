@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import path from "path";
 import multer from "multer";
 import crypto from "crypto";
-import { TextEncoder } from 'util';
+import { TextEncoder } from "util";
 
 const app = express();
 const server = http.createServer(app);
@@ -19,12 +19,10 @@ app.use("/files", express.static(UPLOAD_DIR));
 
 // Multer configuration for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) =>
-  {
+  destination: (req, file, cb) => {
     cb(null, UPLOAD_DIR);
   },
-  filename: (req, file, cb) =>
-  {
+  filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname)); // Save the file with a unique name
   },
@@ -44,8 +42,7 @@ let publicKey;
 //#endregion
 
 //#region Encryption
-function decryptAESKey(encryptedKey)
-{
+function decryptAESKey(encryptedKey) {
   try {
     const decrypted = crypto.privateDecrypt(
       {
@@ -63,8 +60,7 @@ function decryptAESKey(encryptedKey)
 }
 
 // AES Encryption
-function encryptWithAES(data, aesKey, iv)
-{
+function encryptWithAES(data, aesKey, iv) {
   const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
   let encrypted = cipher.update(data, "utf8", "base64");
   encrypted += cipher.final("base64");
@@ -72,8 +68,7 @@ function encryptWithAES(data, aesKey, iv)
 }
 
 // AES Decryption
-function decryptWithAES(encryptedData, aesKey, iv)
-{
+function decryptWithAES(encryptedData, aesKey, iv) {
   const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
   let decrypted = decipher.update(encryptedData, "base64", "utf8");
   decrypted += decipher.final("utf8");
@@ -81,19 +76,16 @@ function decryptWithAES(encryptedData, aesKey, iv)
 }
 
 // Generate random AES key and IV
-function generateAESKey()
-{
+function generateAESKey() {
   return crypto.randomBytes(32); // AES-256 key size
 }
 
-function generateIV()
-{
+function generateIV() {
   return crypto.randomBytes(16); // AES IV size
 }
 
 // Encrypt AES key with RSA public key
-function encryptAESKeyWithRSA(aesKey, recipientPublicKey)
-{
+function encryptAESKeyWithRSA(aesKey, recipientPublicKey) {
   return crypto
     .publicEncrypt(
       {
@@ -106,8 +98,7 @@ function encryptAESKeyWithRSA(aesKey, recipientPublicKey)
     .toString("base64");
 }
 
-const generateKeyPair = async () =>
-{
+const generateKeyPair = async () => {
   const keyPair = await window.crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
@@ -173,8 +164,7 @@ const generateKeyPair = async () =>
 //   console.log("---Broadcast end---");
 // }
 
-function broadcastClientList()
-{
+function broadcastClientList() {
   console.log("Now broadcasting client list...");
   const clientUpdateMessage = {
     type: "client_update",
@@ -194,36 +184,33 @@ function broadcastClientList()
   sendToAllClient(clientUpdateMessage);
 }
 
-function sendToAllClient(message)
-{
+function sendToAllClient(message) {
   console.log("Sending message to client: \n[");
   for (const key in clients) {
     console.log("   ", clients[key]["client-id"]);
   }
   console.log("]\n");
   const messageString = JSON.stringify(message);
+  console.log("sending message:", messageString);
   const clientArray = Object.values(clients);
-  clientArray.forEach((c) =>
-  {
+  clientArray.forEach((c) => {
     if (c.ws && c.ws.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       c.ws.send(messageString); // Send the message
       console.log("Sent to client");
     }
   });
-  console.log("Finished sending message to client.\n");
+  console.log("Finished sending message to clients.\n");
 }
 
-function sendToNeighbourhoodServers(message)
-{
+function sendToNeighbourhoodServers(message) {
   console.log(
     "Sending message to neighbourhood servers...\n",
     neighbourhoodServers
   );
   const messageString = JSON.stringify(message);
 
-  neighbourhoodServers.forEach((serverWs) =>
-  {
+  neighbourhoodServers.forEach((serverWs) => {
     if (serverWs.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       serverWs.send(messageString); // Send the message
@@ -233,31 +220,35 @@ function sendToNeighbourhoodServers(message)
   });
 }
 
+function generateClientId(publicKey) {
+  const hash = crypto.createHash("sha256");
+  hash.update(publicKey);
+  const digest = hash.digest(); // returns a Buffer
+
+  return Buffer.from(digest).toString("base64");
+}
+
 //#region Server to Server
-function addNeighbourhoodServer(serverUrl)
-{
+function addNeighbourhoodServer(serverUrl) {
   const serverWs = new WebSocket(serverUrl);
 
-  serverWs.on('open', () =>
-  {
+  serverWs.on("open", () => {
     console.log(`Connected to neighbourhood server: ${serverUrl}`);
     neighbourhoodServers.push(serverWs);
 
     // Send server hello message
     const helloMessage = {
       type: "server_hello",
-      sender: serverUrl
+      sender: serverUrl,
     };
     serverWs.send(JSON.stringify(helloMessage));
   });
 
-  serverWs.on('message', (message) =>
-  {
+  serverWs.on("message", (message) => {
     handleServerMessage(serverWs, JSON.parse(message));
   });
 
-  serverWs.on('close', () =>
-  {
+  serverWs.on("close", () => {
     console.log(`Disconnected from neighbourhood server: ${serverUrl}`);
     const index = neighbourhoodServers.indexOf(serverWs);
     if (index > -1) {
@@ -265,69 +256,79 @@ function addNeighbourhoodServer(serverUrl)
     }
   });
 
-  serverWs.on('error', (error) =>
-  {
+  serverWs.on("error", (error) => {
     console.error(`WebSocket error with server ${serverUrl}:`, error);
   });
 }
 
-function handleServerMessage(serverWs, message)
-{
-  if (message.type === 'server_hello') {
+function handleServerMessage(serverWs, message) {
+  if (message.type === "server_hello") {
     console.log(`Received server_hello from ${message.sender}`);
   }
-  if (message.type === 'chat') {
+  if (message.type === "chat") {
     // Relay the chat message to the recipient if on this server
     const { destination_servers, chat, symm_keys, iv, client_info } = message;
     const recipientServer = destination_servers[0]; // assuming the first is the target
     if (recipientServer === server.address().address) {
       const recipientClient = clients[client_info.client_id];
-      if (recipientClient && recipientClient.ws && recipientClient.ws.readyState === WebSocket.OPEN) {
-        recipientClient.ws.send(JSON.stringify({
-          type: 'chat',
-          chat,
-          symm_keys,
-          iv
-        }));
+      if (
+        recipientClient &&
+        recipientClient.ws &&
+        recipientClient.ws.readyState === WebSocket.OPEN
+      ) {
+        recipientClient.ws.send(
+          JSON.stringify({
+            type: "chat",
+            chat,
+            symm_keys,
+            iv,
+          })
+        );
       }
     }
   }
 }
 
-function relayPrivateMessage(message)
-{
+function relayPrivateMessage(message) {
   const { destination_servers, chat, symm_keys, iv, client_info } = message;
 
-  destination_servers.forEach((serverUrl) =>
-  {
-    const targetServer = neighbourhoodServers.find(s => s.url === serverUrl);
+  destination_servers.forEach((serverUrl) => {
+    const targetServer = neighbourhoodServers.find((s) => s.url === serverUrl);
     if (targetServer && targetServer.readyState === WebSocket.OPEN) {
-      targetServer.send(JSON.stringify({
-        type: 'chat',
-        destination_servers,
-        chat,
-        symm_keys,
-        iv,
-        client_info
-      }));
+      targetServer.send(
+        JSON.stringify({
+          type: "chat",
+          destination_servers,
+          chat,
+          symm_keys,
+          iv,
+          client_info,
+        })
+      );
     }
   });
 }
 
-function handlePrivateChatMessage(parsedMessage)
-{
-  const { destination_servers, chat, symm_keys, iv, client_info } = parsedMessage;
+function handlePrivateChatMessage(parsedMessage) {
+  const { destination_servers, chat, symm_keys, iv, client_info } =
+    parsedMessage;
 
   // If the destination server is this server, forward to the recipient client
   if (destination_servers.includes(server.address().address)) {
     const recipient = clients[client_info.client_id];
-    if (recipient && recipient.ws && recipient.ws.readyState === WebSocket.OPEN) {
-      recipient.ws.send(JSON.stringify({
-        type: 'chat',
-        chat,
-        symm_keys,
-        iv
-      }));
+    if (
+      recipient &&
+      recipient.ws &&
+      recipient.ws.readyState === WebSocket.OPEN
+    ) {
+      recipient.ws.send(
+        JSON.stringify({
+          type: "chat",
+          chat,
+          symm_keys,
+          iv,
+        })
+      );
     }
   } else {
     // Otherwise, relay to the appropriate server in the neighborhood
@@ -339,8 +340,7 @@ function handlePrivateChatMessage(parsedMessage)
 // addNeighbourhoodServer("ws://localhost:3002");
 
 //#region WebSocket
-wss.on("connection", (ws) =>
-{
+wss.on("connection", (ws) => {
   // onlineUsers.add(ws);
   // const users = Array.from(onlineUsers);
   // const message = JSON.stringify({ type: 'onlineUsers', users });
@@ -353,22 +353,36 @@ wss.on("connection", (ws) =>
   //   sender: server.address().address
   // }));
 
-  ws.on("message", async (message) =>
-  {
+  ws.on("message", async (message) => {
     const parsedMessage = JSON.parse(message);
     console.log("Received message:", parsedMessage);
 
     if (parsedMessage.type === "client_update_request") {
       broadcastClientList();
     } else if (parsedMessage.type == "client_update") {
-      data.clients.forEach((client) =>
-      {
+      data.clients.forEach((client) => {
         clients[client["public-key"]] = {
           ws: clients[client["public-key"]]
             ? clients[client["public-key"]].ws
             : null,
           "client-id": client["client-id"],
         };
+      });
+    } else if (parsedMessage.type === "client_list_request") {
+      let serverAddress = server.address().address || "localhost";
+      if(serverAddress === "::") serverAddress = "localhost";
+      sendToAllClient({
+        type: "client_list",
+        servers: [
+          {
+            address: `${serverAddress}:${server.address().port}`,
+            serverId: "server-id-" + server.address().port,
+            clients: Object.keys(clients).map((publicKey) => ({
+              "client-id": clients[publicKey]["client-id"],
+              "public-key": publicKey,
+            })),
+          },
+        ],
       });
     } else if (parsedMessage.type === "signed_data") {
       // Below must have parsedMessage.data
@@ -391,23 +405,7 @@ wss.on("connection", (ws) =>
       }
 
       // Handle client list requests
-      else if (parsedMessage.type === "client_list_request") {
-        ws.send(
-          JSON.stringify({
-            type: "client_list",
-            servers: [
-              {
-                address: `${server.address().address}:${server.address().port}`,
-                serverId: "server-id-" + server.address().port,
-                clients: Object.keys(clients).map((publicKey) => ({
-                  "client-id": clients[publicKey]["client-id"],
-                  "public-key": publicKey,
-                })),
-              },
-            ],
-          })
-        );
-      } else if (data.type === "fileTransfer") {
+      else if (data.type === "fileTransfer") {
         const fileLink = data.fileLink;
 
         if (data.to && clients[data.to]) {
@@ -427,9 +425,7 @@ wss.on("connection", (ws) =>
             fileLink: fileLink,
           });
         }
-      }
-      else
-        sendToAllClient(parsedMessage);
+      } else sendToAllClient(parsedMessage);
 
       //   // Handle forwarding messages (for text only)
       //   else if (data.type === 'forwardMessage') {
@@ -489,13 +485,10 @@ wss.on("connection", (ws) =>
       //       });
       //     }
       //   }
-    }
-    else
-      sendToAllClient(parsedMessage);
+    } else sendToAllClient(parsedMessage);
   });
 
-  ws.on("close", () =>
-  {
+  ws.on("close", () => {
     // delete clients[userName];
     // broadcastOnlineUsers();
   });
@@ -521,8 +514,7 @@ wss.on("connection", (ws) =>
 //#region Listen
 
 // PORT = 3001;
-server.listen(PORT, () =>
-{
+server.listen(PORT, () => {
   console.log(`> Server started on port ${PORT}`);
 });
 //#endregion

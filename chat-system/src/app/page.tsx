@@ -13,6 +13,9 @@ import {
   encryptAESKeyWithRSA,
   importRSAPublicKey,
   verifySignature,
+  decryptAESKey,
+  decryptWithAES,
+  arrayBufferToBase64
 } from "../utils/crypto";
 import { toast } from "sonner";
 
@@ -64,6 +67,9 @@ let processedFileMessages: string[] = [];
 export default function ChatSystem() {
   const publicKey = useRef("");
   const privateKey = useRef<CryptoKey | null>(null);
+  const aesKey = useRef<CryptoKey | null>(null);
+  const iv = useRef<Uint8Array | null>(null);
+
   const counter = useRef(0);
   const queuedMessage = useRef<Message | null>(null);
 
@@ -218,6 +224,17 @@ export default function ChatSystem() {
             ), // the group chat need to be changed
           ]);
         }
+        else if(data.type === "chat"){
+          console.log("Received encrypted chat message:", data.chat);
+          console.log("Received symm_keys:", data.symm_keys);
+          console.log("Received iv:", data.iv);
+          decryptWithAES(data.chat, data.symm_keys[0], data.iv, privateKey.current!).then((decryptedMessage) => {
+            console.log(decryptedMessage);
+            console.log("Received decrypted chat message:", decryptedMessage);
+          }).catch((error) => {
+            console.error("Error decrypting message:", error);
+          });
+        }
       } else if (parsedMessage.type === "client_list") {
         if (!queuedMessage.current) return;
         const recipientInfo = parsedMessage.servers
@@ -248,7 +265,8 @@ export default function ChatSystem() {
             "Recipient not found on any server.",
             queuedMessage.current.recipient
           );
-        sendPrivateMessage(queuedMessage.current, recipientServer);
+        sendPrivateMessage(queuedMessage.current, recipientServer, recipientServer['server_id']);
+        queuedMessage.current = null;
       } else if (parsedMessage.type === "disconnect") {
         setOnlineUsers((prev) =>
           prev.map((user) =>
@@ -280,39 +298,46 @@ export default function ChatSystem() {
   //#region Functions
   const sendPrivateMessage = async (
     message: Message,
-    recipientServer: string
+    recipientServer: string,
+    serverID: string
   ) => {
-    if (!ws || !aesKey || !iv) {
+    if (!ws || !aesKey.current || !iv) {
       console.error("WebSocket or AES key/IV not initialized.");
       return;
     }
 
-    const recipient = onlineUsers.find(
+    const recipient = onlineUsersRef.current.find(
       (user) => user.id === message.recipient.id
     );
     if (!recipient || !recipient.publicKey) {
       console.error("Recipient not found or lacks a public key.");
+      console.log("Recipient:", recipient);
       return;
     }
 
     const recipientPublicKey = await importRSAPublicKey(recipient.publicKey);
 
-    const encryptedMessage = await encryptAES(message, aesKey, iv);
+    // Encrypt the message content
+    const encryptedMessage = await encryptAES(message.content, aesKey.current, iv.current!);
 
-    const encryptedAesKey = await encryptAESKeyWithRSA(
-      aesKey,
+    // Encrypt the AES key using RSA
+    const encryptedAESKey = await encryptAESKeyWithRSA(
+      aesKey.current,
       recipientPublicKey
     );
+
+    // Encode IV as Base64
+    const ivBase64 = arrayBufferToBase64(iv.current!);
 
     const privateMessage = await signData({
       type: "chat",
       destination_servers: [recipientServer], // Server to which the recipient is connected
-      iv: iv.toString("base64"), // Base64 encoded IV
+      iv: ivBase64, // Base64 encoded IV
       symm_keys: [encryptedAESKey], // AES key encrypted with the recipient's public RSA key
       chat: encryptedMessage, // Base64 encoded AES encrypted message
       client_info: {
         "client-id": userID, // Your client ID
-        "server-id": server.address().address, // Your server's address
+        "server-id": serverID, // Your server's address
       },
       time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expires in 1 minute
     });
@@ -320,18 +345,19 @@ export default function ChatSystem() {
     ws.send(JSON.stringify(privateMessage));
   };
 
+
   // Helper function to sign the message (using RSA-PSS and SHA-256)
-  async function signMessage(message: string, counter: number) {
-    const dataToSign = JSON.stringify({ message, counter });
-    const encoder = new TextEncoder();
-    const data = encoder.encode(dataToSign);
-    const signature = await window.crypto.subtle.sign(
-      { name: "RSA-PSS", saltLength: 32 },
-      privateKey.current!, // Your private key
-      data
-    );
-    return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
-  }
+  // async function signMessage(message: string, counter: number) {
+  //   const dataToSign = JSON.stringify({ message, counter });
+  //   const encoder = new TextEncoder();
+  //   const data = encoder.encode(dataToSign);
+  //   const signature = await window.crypto.subtle.sign(
+  //     { name: "RSA-PSS", saltLength: 32 },
+  //     privateKey.current!, // Your private key
+  //     data
+  //   );
+  //   return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
+  // }
 
   const sendFile = (fileName: string, recipient: string, fileLink: string) => {
     ws?.send(
@@ -410,6 +436,9 @@ export default function ChatSystem() {
     if (!username) setUsername("Anonymous");
 
     setUserID(await computeFingerprint());
+
+    aesKey.current = await generateAESKey();
+    iv.current = window.crypto.getRandomValues(new Uint8Array(16));
   };
 
   const sendMessage = async (message: string, recipient: string) => {
@@ -520,21 +549,4 @@ export default function ChatSystem() {
       </AnimatePresence>
     </div>
   );
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return window.btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = window.atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }

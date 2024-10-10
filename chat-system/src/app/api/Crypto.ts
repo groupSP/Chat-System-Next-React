@@ -35,6 +35,25 @@ export const SignMessage = async (
   return arrayBufferToBase64(signature);
 };
 
+function decryptAESKey(encryptedAESKey: string) {
+  return crypto.privateDecrypt(
+    {
+      key: privateKey.current!, // Your private key
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    },
+    Buffer.from(encryptedAESKey, "base64")
+  );
+}
+
+// Helper function to decrypt the message with AES
+function decryptWithAES(encryptedMessage: string, aesKey: Buffer, iv: Buffer) {
+  const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
+  let decrypted = decipher.update(encryptedMessage, "base64", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
+}
+
 // export const GenerateKeyPair = async (): CryptoKeyPair => {
 //   return await window.crypto.subtle.generateKey(
 //     {

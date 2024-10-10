@@ -1,21 +1,28 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import Chatbox from "@/components/Chatbox";
 import LoginContainer from "@/components/LoginContainer";
 import ForwardModal from "@/components/ForwardModal";
 import { AnimatePresence, motion } from "framer-motion";
-import { SignMessage } from "./api/Crypto";
+import {
+  SignMessage,
+  generateAESKey,
+  encryptAES,
+  encryptAESKeyWithRSA,
+  importRSAPublicKey,
+  verifySignature,
+} from "../utils/crypto";
 import { toast } from "sonner";
 
 export class User {
   id: string;
-  publicKey: string;
+  publicKey?: string;
   username?: string;
   isOnline: boolean = true;
 
-  constructor(id: string, publicKey: string, username?: string) {
+  constructor(id: string, publicKey?: string, username?: string) {
     this.id = id;
     this.publicKey = publicKey;
     this.username = username;
@@ -25,11 +32,18 @@ export class User {
 export class Message {
   sender: User;
   content: string;
+  recipient: User;
   fileLink?: string;
 
-  constructor(sender: User, content: string, fileLink?: string) {
+  constructor(
+    sender: User,
+    content: string,
+    recipient: User,
+    fileLink?: string
+  ) {
     this.sender = sender;
     this.content = content;
+    this.recipient = recipient;
     this.fileLink = fileLink;
   }
 
@@ -51,6 +65,7 @@ export default function ChatSystem() {
   const publicKey = useRef("");
   const privateKey = useRef<CryptoKey | null>(null);
   const counter = useRef(0);
+  const queuedMessage = useRef<Message | null>(null);
 
   const [ws, setWS] = useState<WebSocket | null>(null);
   const [username, setUsername] = useState("");
@@ -58,6 +73,7 @@ export default function ChatSystem() {
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [messageList, setMessageList] = useState<Message[]>([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
+  const [recipient, setRecipient] = useState("public_chat");
 
   const onlineUsersRef = useRef<User[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
@@ -196,11 +212,43 @@ export default function ChatSystem() {
             new Message(
               onlineUsersRef.current.find(
                 (user) => user.publicKey === data.sender
-              ) ?? new User("Unknown", "Unknown"),
-              data.message
+              ) ?? new User("Unknown"),
+              data.message,
+              new User("public_chat")
             ), // the group chat need to be changed
           ]);
         }
+      } else if (parsedMessage.type === "client_list") {
+        if (!queuedMessage.current) return;
+        const recipientInfo = parsedMessage.servers
+          .flatMap((server: any) => server.clients)
+          .find(
+            (client: any) =>
+              client["client-id"] === queuedMessage.current!.recipient.id
+          );
+
+        if (!recipientInfo)
+          return console.error(
+            "Recipient not found on any server.",
+            queuedMessage.current.recipient
+          );
+
+        if (!queuedMessage.current.recipient.publicKey)
+          queuedMessage.current.recipient.publicKey =
+            recipientInfo["public-key"];
+        const recipientServer = parsedMessage.servers.find((server: any) =>
+          server.clients.some(
+            (client: any) =>
+              client["client-id"] === queuedMessage.current!.recipient.id
+          )
+        )?.address; // Get the server address of the recipient
+
+        if (!recipientServer)
+          return console.error(
+            "Recipient not found on any server.",
+            queuedMessage.current.recipient
+          );
+        sendPrivateMessage(queuedMessage.current, recipientServer);
       } else if (parsedMessage.type === "disconnect") {
         setOnlineUsers((prev) =>
           prev.map((user) =>
@@ -230,6 +278,61 @@ export default function ChatSystem() {
   //#endregion
 
   //#region Functions
+  const sendPrivateMessage = async (
+    message: Message,
+    recipientServer: string
+  ) => {
+    if (!ws || !aesKey || !iv) {
+      console.error("WebSocket or AES key/IV not initialized.");
+      return;
+    }
+
+    const recipient = onlineUsers.find(
+      (user) => user.id === message.recipient.id
+    );
+    if (!recipient || !recipient.publicKey) {
+      console.error("Recipient not found or lacks a public key.");
+      return;
+    }
+
+    const recipientPublicKey = await importRSAPublicKey(recipient.publicKey);
+
+    const encryptedMessage = await encryptAES(message, aesKey, iv);
+
+    const encryptedAesKey = await encryptAESKeyWithRSA(
+      aesKey,
+      recipientPublicKey
+    );
+
+    const privateMessage = await signData({
+      type: "chat",
+      destination_servers: [recipientServer], // Server to which the recipient is connected
+      iv: iv.toString("base64"), // Base64 encoded IV
+      symm_keys: [encryptedAESKey], // AES key encrypted with the recipient's public RSA key
+      chat: encryptedMessage, // Base64 encoded AES encrypted message
+      client_info: {
+        "client-id": userID, // Your client ID
+        "server-id": server.address().address, // Your server's address
+      },
+      time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expires in 1 minute
+    });
+
+    ws.send(JSON.stringify(privateMessage));
+  };
+
+  // Helper function to sign the message (using RSA-PSS and SHA-256)
+  async function signMessage(message: string, counter: number) {
+    const dataToSign = JSON.stringify({ message, counter });
+    const encoder = new TextEncoder();
+    const data = encoder.encode(dataToSign);
+    const signature = await window.crypto.subtle.sign(
+      { name: "RSA-PSS", saltLength: 32 },
+      privateKey.current!, // Your private key
+      data
+    );
+    return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
+  }
+
   const sendFile = (fileName: string, recipient: string, fileLink: string) => {
     ws?.send(
       JSON.stringify({
@@ -247,6 +350,7 @@ export default function ChatSystem() {
       new Message(
         new User(userID, publicKey.current, username),
         fileName,
+        new User(recipient),
         fileLink
       ),
     ]);
@@ -322,9 +426,20 @@ export default function ChatSystem() {
         from: username,
       };
       ws.send(JSON.stringify(await signData(messageData)));
+      console.log("mesage sent");
     } else {
+      queuedMessage.current = new Message(
+        new User(userID, publicKey.current, username),
+        message,
+        onlineUsers.find((user) => user.id === recipient) ?? new User(recipient)
+      );
+      console.log("private message queued");
+      ws.send(
+        JSON.stringify({
+          type: "client_list_request",
+        })
+      );
     }
-    console.log("mesage sent");
   };
 
   const addOnlineUser = (user: User[]) => {
@@ -368,15 +483,15 @@ export default function ChatSystem() {
             transition={{ duration: 0.5 }}
             className="flex flex-col md:flex-row h-[calc(100vh-2rem)] gap-4"
           >
-            <Sidebar onlineUsers={onlineUsers} />
+            <Sidebar onlineUsers={onlineUsers} setRecipient={setRecipient} />
             <Chatbox
               messageList={messageList}
               sendMessage={sendMessage}
               username={username}
               userID={userID}
-              onlineUsers={onlineUsers}
               setOffline={setOffline}
               sendFile={sendFile}
+              recipient={recipient}
             />
           </motion.div>
         ) : (
@@ -405,4 +520,21 @@ export default function ChatSystem() {
       </AnimatePresence>
     </div>
   );
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return window.btoa(binary);
+}
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binary = window.atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }

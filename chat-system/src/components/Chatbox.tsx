@@ -20,6 +20,7 @@ import { Send, FileUp, Forward, Unplug } from "lucide-react";
 import { Message, User } from "@/app/page";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import axios from "axios";
+import { toast } from "sonner";
 
 interface ChatboxProps {
   // onForward: () => void;
@@ -27,9 +28,9 @@ interface ChatboxProps {
   sendMessage: (message: string, recipient: string) => void;
   username: string;
   userID: string;
-  onlineUsers: User[];
   setOffline: () => void;
   sendFile: (fileName: string, recipient: string, fileLink: string) => void;
+  recipient: string;
 }
 
 interface UploadResponse {
@@ -41,13 +42,12 @@ export default function Chatbox({
   sendMessage,
   username,
   userID,
-  onlineUsers,
   setOffline,
   sendFile,
+  recipient,
 }: ChatboxProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
-  const [recipient, setRecipient] = useState("public_chat");
 
   const handleSendMessage = () => {
     console.log(`Sending message to ${recipient}: ${message}`);
@@ -64,18 +64,16 @@ export default function Chatbox({
     formData.append("file", file as Blob);
 
     try {
-      const response = await axios.post<UploadResponse>(
-        "/upload",
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
+      const response = await axios.post("/api/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
 
-      if (response.status === 200 && response.data)
-        sendFile(file.name, recipient, response.data.file_url);
+      if (response.status === 200 && response.data) {
+        sendFile(file.name, recipient, response.data.fileLink);
+        toast.success(response.data.message);
+      }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 413) {
         console.error("File size too large.");
@@ -92,43 +90,65 @@ export default function Chatbox({
         <CardTitle className="font-thin pb-4">userID: {userID}</CardTitle>
         <CardTitle>
           <Button className="rounded-3xl bg-slate-400" onClick={setOffline}>
-            <Unplug className="mr-2 h-4 w-4" /> Disconnect
+            <Unplug className="mr-2 h-4 w-4" /> Go offline
           </Button>
         </CardTitle>
-        <CardTitle className="text-2xl font-bold pt-4">Chat</CardTitle>
+        <CardTitle className="text-xl font-thin pt-4 text-slate-400">
+          You are now chatting with:
+        </CardTitle>
+        <CardTitle className="text-2xl font-bold text-green-100">
+          {recipient}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex-grow overflow-hidden">
         <ScrollArea className="h-[calc(100vh-16rem)]">
           <div id="chat-messageList" className="space-y-4">
             <ul className="space-y-4">
-              {messageList.map((message, index) => (
-                <li
-                  key={index}
-                  className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
-                    message.sender.id === userID
-                      ? "bg-green-200"
-                      : "bg-slate-100"
-                  }`}
-                >
-                  <div className="flex-shrink-0">
-                    <Avatar>
-                      <AvatarImage
-                        src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
-                        alt={message.displayName()}
-                      />
-                      <AvatarFallback>{message.displayName()}</AvatarFallback>
-                    </Avatar>
-                  </div>
-                  <div className="flex-grow">
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-gray-500 text-sm">
-                        {message.displayName()}
-                      </span>
-                      <span className="font-sans mt-1">{message.content}</span>
-                    </div>
-                  </div>
-                </li>
-              ))}
+              {messageList.map(
+                (message, index) =>
+                  message.recipient.id === recipient && (
+                    <li
+                      key={index}
+                      className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
+                        message.sender.id === userID
+                          ? "bg-green-200"
+                          : "bg-slate-100"
+                      }`}
+                    >
+                      <div className="flex-shrink-0">
+                        <Avatar>
+                          <AvatarImage
+                            src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
+                            alt={message.displayName()}
+                          />
+                          <AvatarFallback>
+                            {message.displayName()}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                      <div className="flex-grow">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-500 text-sm">
+                            {message.displayName()}
+                          </span>
+                          <span className="font-sans mt-1">
+                            {message.content}
+                            {message.fileLink && (
+                              <a
+                                href={message.fileLink}
+                                download
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                → Click here to Download
+                              </a>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </li>
+                  )
+              )}
             </ul>
           </div>
         </ScrollArea>
@@ -145,7 +165,7 @@ export default function Chatbox({
               if (e.key === "Enter") handleSendMessage();
             }}
           />
-          <Select value={recipient} onValueChange={setRecipient}>
+          {/* <Select value={recipient} onValueChange={setRecipient}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Select recipient" />
             </SelectTrigger>
@@ -157,7 +177,7 @@ export default function Chatbox({
                 </SelectItem>
               ))}
             </SelectContent>
-          </Select>
+          </Select> */}
           <Button onClick={handleSendMessage}>
             <Send className="mr-2 h-4 w-4" /> Send
           </Button>

@@ -11,16 +11,33 @@ import { User } from "@/app/page";
 
 interface SidebarProps {
   onlineUsers: User[];
+  setRecipient: (recipient: string) => void;
 }
 
-export default function Sidebar({ onlineUsers }: SidebarProps) {
+export default function Sidebar({
+  onlineUsers,
+  setRecipient,
+}: SidebarProps) {
   return (
     <Card className="w-full md:w-1/3 lg:w-1/4">
       <CardHeader>
-        <CardTitle className="text-2xl font-bold">Online onlineUsers</CardTitle>
+        <CardTitle className="text-2xl font-bold">
+          Online onlineUsers:
+        </CardTitle>
+        <CardTitle className="text-sm font-thin text-gray-400">
+          Please click the below name to chat with
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[calc(100vh-12rem)]">
+          <Button
+            variant="link"
+            className="text-xl pb-8 underline"
+            value={"public_chat"}
+            onClick={() => setRecipient("public_chat")}
+          >
+            Go To public_chat
+          </Button>
           <ul className="space-y-4">
             {onlineUsers.map((user) => {
               const username = user.username ?? user.id;
@@ -44,6 +61,8 @@ export default function Sidebar({ onlineUsers }: SidebarProps) {
                       <Button
                         variant="link"
                         className={`${!user.isOnline && "text-gray-500"}`}
+                        value={user.id}
+                        onClick={() => setRecipient(user.id)}
                       >
                         {username}
                       </Button>

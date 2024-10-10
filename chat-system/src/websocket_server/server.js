@@ -239,7 +239,7 @@ function addNeighbourhoodServer(serverUrl) {
     // Send server hello message
     const helloMessage = {
       type: "server_hello",
-      sender: serverUrl,
+      sender: PORT,
     };
     serverWs.send(JSON.stringify(helloMessage));
   });
@@ -336,8 +336,6 @@ function handlePrivateChatMessage(parsedMessage) {
   }
 }
 
-// addNeighbourhoodServer("ws://localhost:3001");
-// addNeighbourhoodServer("ws://localhost:3002");
 
 //#region WebSocket
 wss.on("connection", (ws) => {
@@ -513,8 +511,9 @@ wss.on("connection", (ws) => {
 
 //#region Listen
 
-// PORT = 3001;
+PORT = 3001;
 server.listen(PORT, () => {
   console.log(`> Server started on port ${PORT}`);
 });
 //#endregion
+addNeighbourhoodServer("ws://localhost:3000");

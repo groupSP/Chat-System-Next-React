@@ -15,7 +15,7 @@ First, install the dependancy: ```npm i```.
 Second, go to the path that contain package.json.
 Third, go to websocket_server folder, you can go by typing: ```cd src\websocket_server```.
 Then, run the server before running the client webpage: ```node server.js```
-Finally, run the client webpage in the path that contain package.json, you can do ```cd ../../```. And run:
+Finally, open another terminal in the path that contain package.json and run:
 ```bash
 npm run dev
 ```

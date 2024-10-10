@@ -72,21 +72,18 @@ export async function decryptAES(
 
 export async function encryptAESKeyWithRSA(
   aesKey: CryptoKey,
-  recipientPublicKey: CryptoKey
+  encryptionPublicKey: CryptoKey
 ): Promise<string> {
-  // Export the AES key to raw format
   const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
 
-  // Encrypt the AES key with RSA-OAEP
   const encryptedKey = await window.crypto.subtle.encrypt(
     {
-      name: "RSA-OAEP",
+      name: "RSA-OAEP", // Use OAEP for encryption
     },
-    recipientPublicKey,
+    encryptionPublicKey, // Use the encryption key pair (RSA-OAEP)
     rawAesKey
   );
 
-  // Convert encrypted key to Base64
   return arrayBufferToBase64(encryptedKey);
 }
 
@@ -175,25 +172,26 @@ export async function generateAESKey(): Promise<CryptoKey> {
   );
 }
 
-export const SignMessage = async (
+// Function to sign data using RSA-PSS
+export async function signData(
   data: any,
   counter: number,
-  privateKey: CryptoKey
-): Promise<string> => {
+  signingPrivateKey: CryptoKey
+): Promise<string> {
   const encoder = new TextEncoder();
   const encodedMessage = encoder.encode(JSON.stringify({ data, counter }));
 
   const signature = await window.crypto.subtle.sign(
     {
-      name: "RSA-PSS",
-      saltLength: 32,
+      name: "RSA-PSS", // Use PSS for signing
+      saltLength: 32, // 32 bytes of salt
     },
-    privateKey,
+    signingPrivateKey, // Use the signing key pair (RSA-PSS)
     encodedMessage
   );
 
   return arrayBufferToBase64(signature);
-};
+}
 
 // Function to verify signature using RSA-PSS
 export async function verifySignature(
@@ -218,3 +216,31 @@ export async function verifySignature(
     encoded
   );
 }
+
+  export async function generateEncryptionKeyPair() {
+    // RSA-OAEP for encryption/decryption
+    return await window.crypto.subtle.generateKey(
+      {
+        name: "RSA-OAEP", // Use OAEP for encryption
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+        hash: { name: "SHA-256" }, // Use SHA-256 for hashing
+      },
+      true, // Keys should be extractable for exporting
+      ["encrypt", "decrypt"] // Use for encrypting/decrypting
+    );
+  }
+
+  export async function generateSigningKeyPair() {
+    // RSA-PSS for signing/verifying
+    return await window.crypto.subtle.generateKey(
+      {
+        name: "RSA-PSS", // Use PSS for signing
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
+        hash: { name: "SHA-256" }, // Use SHA-256 for hashing
+      },
+      true, // Keys should be extractable for exporting
+      ["sign", "verify"] // Use for signing/verifying
+    );
+  }

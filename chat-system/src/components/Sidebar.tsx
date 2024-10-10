@@ -70,7 +70,7 @@ export default function Sidebar({
                     <HoverCardContent className="rounded-xl w-100">
                       <p>ID: {user.id}</p>
                       <br />
-                      <p>PublicKey: {user.publicKey.slice(0, 30)}...</p>
+                      <p>PublicKey: {user.publicKey?.slice(0, 30)}...</p>
                     </HoverCardContent>
                   </HoverCard>
                 </li>

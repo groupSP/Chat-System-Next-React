@@ -6,15 +6,27 @@ import Chatbox from "@/components/Chatbox";
 import LoginContainer from "@/components/LoginContainer";
 import ForwardModal from "@/components/ForwardModal";
 import { AnimatePresence, motion } from "framer-motion";
+import { toast } from "sonner";
+
+// Import cryptographic functions
 import {
-  SignMessage,
   generateAESKey,
   encryptAES,
   encryptAESKeyWithRSA,
   importRSAPublicKey,
+  signData,
   verifySignature,
-} from "../utils/crypto";
-import { toast } from "sonner";
+  decryptAES,
+  generateRandomBytes,
+  generateEncryptionKeyPair,
+  generateSigningKeyPair
+} from "@/utils/crypto";
+
+// State Variables
+const encryptionPrivateKey = useRef<CryptoKey | null>(null);
+const encryptionPublicKey = useRef<CryptoKey | null>(null);
+const signingPrivateKey = useRef<CryptoKey | null>(null);
+const signingPublicKey = useRef<CryptoKey | null>(null);
 
 export class User {
   id: string;
@@ -35,12 +47,7 @@ export class Message {
   recipient: User;
   fileLink?: string;
 
-  constructor(
-    sender: User,
-    content: string,
-    recipient: User,
-    fileLink?: string
-  ) {
+  constructor(sender: User, content: string, recipient: User, fileLink?: string) {
     this.sender = sender;
     this.content = content;
     this.recipient = recipient;
@@ -60,12 +67,14 @@ type Client = {
 
 let processedFileMessages: string[] = [];
 
-//#region ChatSystem
+// Counter for messages to prevent replay attacks
+let messageCounter = 0;
+
 export default function ChatSystem() {
   const publicKey = useRef("");
   const privateKey = useRef<CryptoKey | null>(null);
-  const counter = useRef(0);
-  const queuedMessage = useRef<Message | null>(null);
+  const [aesKey, setAesKey] = useState<CryptoKey | null>(null);
+  const [iv, setIv] = useState<Uint8Array | null>(null);
 
   const [ws, setWS] = useState<WebSocket | null>(null);
   const [username, setUsername] = useState("");
@@ -90,7 +99,6 @@ export default function ChatSystem() {
       console.log("WebSocket already connected.");
       ws.close();
     }
-    // ws = new WebSocket(`ws://${window.location.host}`);
     setWS(new WebSocket(`ws://localhost:3000/`));
   }, [retryAttempts]);
 
@@ -102,7 +110,7 @@ export default function ChatSystem() {
     }
     ws.onopen = async () => {
       console.log("WebSocket connection opened.");
-      await generateKeyPair();
+      await generateKeyPairs();
       setRetryAttempts(0);
 
       const helloMessage = {
@@ -110,54 +118,13 @@ export default function ChatSystem() {
         public_key: publicKey.current,
         from: username,
       };
-      ws.send(JSON.stringify(await signData(helloMessage)));
+      ws.send(JSON.stringify(await signData(helloMessage, messageCounter++, signingPrivateKey.current!)));
 
-      // document.getElementById('forward-file').addEventListener('click', () => {
-      //   const modal = document.getElementById('forward-modal');
-      //   const forwardList = document.getElementById('forward-user-list');
-
-      //   // Clear the previous user list
-      //   forwardList.innerHTML = '';
-
-      //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
-      //   onlineUsersRef.forEach(user => {
-      //     if (user !== username && user && user.trim() !== 'undefined') {
-      //       const option = document.createElement('option');
-      //       option.value = user;
-      //       option.textContent = user;
-      //       forwardList.appendChild(option);
-      //     }
-      //   });
-
-      //   // Show the modal to select the user for forwarding
-      //   modal.style.display = 'block';
-      // });
-
-      // Forwarding the selected message to the chosen user
-      // document.getElementById('forward-btn').addEventListener('click', () => {
-      //   const selectedUser = document.getElementById('forward-user-list').value;
-
-      //   selectedMessages.forEach(message => {
-      //     // Forwarding the message to the selected user
-      //     ws.send(JSON.stringify({
-      //       type: 'forwardMessage',
-      //       data: {
-      //         originalMessage: message,
-      //         forwardTo: selectedUser
-      //       }
-      //     }));
-
-      //     // Display the message in the chatbox as a forwarded message
-      //     displayMessage('You (Forwarded)', message);
-      //   });
-
-      //   // Hide the modal after forwarding
-      //   document.getElementById('forward-modal').style.display = 'none';
-      //   selectedMessages = []; // Clear selected messageList
-      // });
+      // Optionally, request client list upon connection
+      requestClientList();
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = async (event) => {
       const parsedMessage = JSON.parse(event.data);
       console.log("Received WebSocket message:", parsedMessage);
 
@@ -173,123 +140,67 @@ export default function ChatSystem() {
           )
         );
       } else if (parsedMessage.type === "chat") {
-        // try {
-        //   varifyChat(parsedMessage.chat);
-        //   console.log('Received chat message:', parsedMessage.chat);
-        //   console.log('Received symm_keys:', parsedMessage.symm_keys);
-        //   console.log('Received iv:', parsedMessage.iv);
-        //   const decryptedMessage = decryptWithAES(parsedMessage.chat, parsedMessage.symm_keys[0], parsedMessage.iv);
-        //   console.log(decryptedMessage);
-        //   console.log('Received chat message:', decryptedMessage);
-        //   updateUsers(decryptedMessage);
-        // } catch (error) {
-        //   console.error("Error decrypting message:", error);
-        // }
-        // } else if (parsedMessage.type === "publicKey") {
-        //   serverPublicKeyPem = parsedMessage.key; // Set the public key
-      } else if (parsedMessage.type === "fileTransfer") {
-        if (parsedMessage.fileName && parsedMessage.from) {
-          const messageId = `${parsedMessage.from}-${parsedMessage.fileName}`;
-          if (parsedMessage.from !== username) {
-            processedFileMessages.push(messageId);
-            console.log("Received file with id: ", messageId);
-            setMessageList((prev) => [
-              ...prev,
-              new Message(
-                new User(parsedMessage.from, ""),
-                parsedMessage.fileName,
-                parsedMessage.fileLink
-              ),
-            ]);
-          }
+        // Handle private chat message
+        const { chat, symm_keys, iv: ivBase64, client_info } = parsedMessage;
+
+        // Decrypt AES key
+        if (!encryptionPrivateKey.current) {
+          console.error("Private key not available for decryption.");
+          return;
         }
-      } else if (parsedMessage.type === "signed_data") {
-        console.log("Received a signed data");
-        const data = parsedMessage.data;
-        if (data.type === "public_chat") {
-          setMessageList((prev) => [
-            ...prev,
-            new Message(
-              onlineUsersRef.current.find(
-                (user) => user.publicKey === data.sender
-              ) ?? new User("Unknown"),
-              data.message,
-              new User("public_chat")
-            ), // the group chat need to be changed
-          ]);
-        }
-      } else if (parsedMessage.type === "client_list") {
-        if (!queuedMessage.current) return;
-        const recipientInfo = parsedMessage.servers
-          .flatMap((server: any) => server.clients)
-          .find(
-            (client: any) =>
-              client["client-id"] === queuedMessage.current!.recipient.id
-          );
 
-        if (!recipientInfo)
-          return console.error(
-            "Recipient not found on any server.",
-            queuedMessage.current.recipient
-          );
+        const decryptedAesKey = await decryptAESKeyWithRSA(symm_keys[0], encryptionPrivateKey.current);
 
-        if (!queuedMessage.current.recipient.publicKey)
-          queuedMessage.current.recipient.publicKey =
-            recipientInfo["public-key"];
-        const recipientServer = parsedMessage.servers.find((server: any) =>
-          server.clients.some(
-            (client: any) =>
-              client["client-id"] === queuedMessage.current!.recipient.id
-          )
-        )?.address; // Get the server address of the recipient
+        // Convert iv from Base64
+        const ivArray = base64ToUint8Array(ivBase64);
 
-        if (!recipientServer)
-          return console.error(
-            "Recipient not found on any server.",
-            queuedMessage.current.recipient
-          );
-        sendPrivateMessage(queuedMessage.current, recipientServer);
-      } else if (parsedMessage.type === "disconnect") {
-        setOnlineUsers((prev) =>
-          prev.map((user) =>
-            user.id === parsedMessage.userID
-              ? { ...user, isOnline: false }
-              : user
-          )
-        );
+        // Decrypt the message
+        const decryptedMessage = await decryptAES(chat, decryptedAesKey, ivArray);
+
+        // Find the sender's user information
+        const sender = onlineUsersRef.current.find(user => user.id === client_info["client-id"]) ?? new User("Unknown");
+
+        // Add the message to the message list
+        setMessageList((prev) => [
+          ...prev,
+          new Message(
+            sender,
+            decryptedMessage,
+            new User(client_info["client-id"])
+          ),
+        ]);
       }
+    };
 
-      if (ws) {
-        ws.onerror = (error) => {
-          console.error("WebSocket error:", error);
-        };
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
 
-        ws.onclose = () => {
-          // alert("Closing connection");
-          // setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
-        };
-      }
+    ws.onclose = () => {
+      console.log("WebSocket connection closed");
+      setTimeout(() => setRetryAttempts((prev) => prev + 1), 2000);
     };
 
     return () => {
       ws?.close();
     };
   }, [ws]);
-  //#endregion
 
-  //#region Functions
-  const sendPrivateMessage = async (
-    message: Message,
-    recipientServer: string
-  ) => {
+  const requestClientList = () => {
+    if (!ws) return;
+    const clientListRequest = {
+      type: "client_list_request",
+    };
+    ws.send(JSON.stringify(clientListRequest));
+  };
+
+  const sendPrivateMessage = async (message: string, recipientId: string) => {
     if (!ws || !aesKey || !iv) {
       console.error("WebSocket or AES key/IV not initialized.");
       return;
     }
 
-    const recipient = onlineUsers.find(
-      (user) => user.id === message.recipient.id
-    );
+    const recipient = onlineUsers.find(user => user.id === recipientId);
     if (!recipient || !recipient.publicKey) {
       console.error("Recipient not found or lacks a public key.");
       return;
@@ -299,39 +210,37 @@ export default function ChatSystem() {
 
     const encryptedMessage = await encryptAES(message, aesKey, iv);
 
-    const encryptedAesKey = await encryptAESKeyWithRSA(
-      aesKey,
-      recipientPublicKey
-    );
+    const encryptedAesKey = await encryptAESKeyWithRSA(aesKey, recipientPublicKey);
 
-    const privateMessage = await signData({
-      type: "chat",
-      destination_servers: [recipientServer], // Server to which the recipient is connected
-      iv: iv.toString("base64"), // Base64 encoded IV
-      symm_keys: [encryptedAESKey], // AES key encrypted with the recipient's public RSA key
-      chat: encryptedMessage, // Base64 encoded AES encrypted message
-      client_info: {
-        "client-id": userID, // Your client ID
-        "server-id": server.address().address, // Your server's address
+    const privateMessage = {
+      type: "signed_data",
+      data: {
+        type: "chat",
+        destination_servers: ["ws://localhost:3000"],
+        iv: arrayBufferToBase64(iv.buffer),
+        symm_keys: [encryptedAesKey],
+        chat: encryptedMessage,
+        client_info: {
+          "client-id": userID,
+          "server-id": "ws://localhost:3000",
+        },
+        time_to_die: new Date(Date.now() + 60000).toISOString(),
       },
-      time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expires in 1 minute
-    });
+      counter: messageCounter++,
+      signature: await signData(message, messageCounter, signingPrivateKey.current!),
+    };
 
     ws.send(JSON.stringify(privateMessage));
-  };
 
-  // Helper function to sign the message (using RSA-PSS and SHA-256)
-  async function signMessage(message: string, counter: number) {
-    const dataToSign = JSON.stringify({ message, counter });
-    const encoder = new TextEncoder();
-    const data = encoder.encode(dataToSign);
-    const signature = await window.crypto.subtle.sign(
-      { name: "RSA-PSS", saltLength: 32 },
-      privateKey.current!, // Your private key
-      data
-    );
-    return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
-  }
+    setMessageList((prev) => [
+      ...prev,
+      new Message(
+        new User(userID, publicKey.current, username),
+        message,
+        new User(recipientId)
+      ),
+    ]);
+  };
 
   const sendFile = (fileName: string, recipient: string, fileLink: string) => {
     ws?.send(
@@ -356,95 +265,33 @@ export default function ChatSystem() {
     ]);
   };
 
-  const setOffline = () => {
-    if (!ws) return;
-    toast.success("Disconnected");
-    ws.send(JSON.stringify({ type: "disconnect", userID: userID }));
-  };
-
-  const signData = async (data: any) => {
-    return {
-      type: "signed_data",
-      data: data,
-      counter: counter.current++,
-      signature: await SignMessage(data, counter.current, privateKey.current!),
-    };
-  };
-
-  const computeFingerprint = async () => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(publicKey.current);
-    const hash = await window.crypto.subtle.digest("SHA-256", data);
-    return btoa(
-      String.fromCharCode.apply(null, Array.from(new Uint8Array(hash)))
-    );
-  };
-
-  const generateKeyPair = async () => {
-    if (!ws) {
-      console.error("WebSocket connection not established.");
-      return;
-    }
-
-    const keyPair = await window.crypto.subtle.generateKey(
-      {
-        name: "RSA-PSS",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-        hash: { name: "SHA-256" },
-      },
-      true,
-      ["sign", "verify"]
-    );
-    const publicKeyTem = await window.crypto.subtle.exportKey(
-      "spki",
-      keyPair.publicKey
-    );
-
-    const publicKeyBase64 = btoa(
-      String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
-    );
-
-    publicKey.current = publicKeyBase64;
-    privateKey.current = keyPair.privateKey;
-    if (!username) setUsername("Anonymous");
-
-    setUserID(await computeFingerprint());
+  const onLogin = (username: string) => {
+    setUsername(username);
+    setRetryAttempts(1);
   };
 
   const sendMessage = async (message: string, recipient: string) => {
-    if (!ws) {
-      console.error("WebSocket connection not established.");
-      return;
-    }
-
     if (recipient === "public_chat") {
-      const messageData = {
-        type: "public_chat",
-        message: message,
-        sender: publicKey.current,
-        from: username,
+      const publicMessage = {
+        type: "signed_data",
+        data: {
+          type: "public_chat",
+          sender: publicKey.current,
+          message: message,
+        },
+        counter: messageCounter++,
+        signature: await signData(message, messageCounter, signingPrivateKey.current!),
       };
-      ws.send(JSON.stringify(await signData(messageData)));
-      console.log("mesage sent");
+      ws?.send(JSON.stringify(publicMessage));
+      console.log("Public message sent");
     } else {
-      queuedMessage.current = new Message(
-        new User(userID, publicKey.current, username),
-        message,
-        onlineUsers.find((user) => user.id === recipient) ?? new User(recipient)
-      );
-      console.log("private message queued");
-      ws.send(
-        JSON.stringify({
-          type: "client_list_request",
-        })
-      );
+      await sendPrivateMessage(message, recipient);
     }
   };
 
-  const addOnlineUser = (user: User[]) => {
+  const addOnlineUser = (users: User[]) => {
     const allUsers = [...onlineUsersRef.current];
-    user.forEach((addUser) => {
+    users.forEach((addUser) => {
       if (allUsers.some((u) => u.publicKey === addUser.publicKey)) {
         const index = onlineUsersRef.current.findIndex(
           (u) => u.publicKey === addUser.publicKey
@@ -456,25 +303,38 @@ export default function ChatSystem() {
           setUsername(allUsers[index].username);
       } else allUsers.push(addUser);
     });
-    console.log("Online users:", allUsers);
     setOnlineUsers(allUsers);
   };
 
-  const handleForward = () => {
-    setShowForwardModal(true);
+  const generateKeyPairs = async () => {
+    const encryptionKeyPair = await generateEncryptionKeyPair(); // RSA-OAEP key pair
+    const signingKeyPair = await generateSigningKeyPair(); // RSA-PSS key pair
+
+    encryptionPrivateKey.current = encryptionKeyPair.privateKey;
+    encryptionPublicKey.current = encryptionKeyPair.publicKey;
+
+    signingPrivateKey.current = signingKeyPair.privateKey;
+    signingPublicKey.current = signingKeyPair.publicKey;
+
+    const generatedAesKey = await generateAESKey();
+    setAesKey(generatedAesKey);
+
+    const generatedIv = await generateRandomBytes(16); // 16 bytes IV for AES-GCM
+    setIv(generatedIv);
+
+    if (!username) setUsername("Anonymous");
+
+    const encoder = new TextEncoder();
+    const data = encoder.encode(publicKey.current);
+    const hash = await window.crypto.subtle.digest("SHA-256", data);
+    const fingerprint = arrayBufferToBase64(hash);
+    setUserID(fingerprint);
   };
 
-  const onLogin = (username: string) => {
-    setUsername(username);
-    setRetryAttempts(1);
-  };
-  //#endregion
-
-  //#region Render
   return (
     <div className="container mx-auto p-4 min-h-screen bg-background text-foreground">
       <AnimatePresence mode="wait">
-        {privateKey.current ? (
+        {encryptionPrivateKey.current ? (
           <motion.div
             key="chat"
             initial={{ opacity: 0, y: 20 }}
@@ -483,13 +343,20 @@ export default function ChatSystem() {
             transition={{ duration: 0.5 }}
             className="flex flex-col md:flex-row h-[calc(100vh-2rem)] gap-4"
           >
-            <Sidebar onlineUsers={onlineUsers} setRecipient={setRecipient} />
+            <Sidebar
+              onlineUsers={onlineUsers}
+              setRecipient={setRecipient}
+            />
             <Chatbox
               messageList={messageList}
               sendMessage={sendMessage}
               username={username}
               userID={userID}
-              setOffline={setOffline}
+              setOffline={() => {
+                if (!ws) return;
+                toast.success("Disconnected");
+                ws.send(JSON.stringify({ type: "disconnect", userID: userID }));
+              }}
               sendFile={sendFile}
               recipient={recipient}
             />
@@ -522,6 +389,7 @@ export default function ChatSystem() {
   );
 }
 
+// Helper functions for Base64 conversions
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = "";
@@ -537,4 +405,34 @@ function base64ToUint8Array(base64: string): Uint8Array {
     bytes[i] = binary.charCodeAt(i);
   }
   return bytes;
+}
+
+async function decryptAESKeyWithRSA(encryptedAESKey: string, privateKey: CryptoKey): Promise<CryptoKey> {
+  const decryptedAesKeyBuffer = await window.crypto.subtle.decrypt(
+    {
+      name: "RSA-OAEP",
+    },
+    privateKey,
+    base64ToArrayBuffer(encryptedAESKey)
+  );
+
+  return window.crypto.subtle.importKey(
+    "raw",
+    decryptedAesKeyBuffer,
+    {
+      name: "AES-GCM",
+    },
+    true,
+    ["encrypt", "decrypt"]
+  );
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binary = window.atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
 }

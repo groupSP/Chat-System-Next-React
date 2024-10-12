@@ -19,10 +19,12 @@ app.use("/files", express.static(UPLOAD_DIR));
 
 // Multer configuration for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (req, file, cb) =>
+  {
     cb(null, UPLOAD_DIR);
   },
-  filename: (req, file, cb) => {
+  filename: (req, file, cb) =>
+  {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname)); // Save the file with a unique name
   },
@@ -42,7 +44,8 @@ let publicKey;
 //#endregion
 
 //#region Encryption
-function decryptAESKey(encryptedKey) {
+function decryptAESKey(encryptedKey)
+{
   try {
     const decrypted = crypto.privateDecrypt(
       {
@@ -60,7 +63,8 @@ function decryptAESKey(encryptedKey) {
 }
 
 // AES Encryption
-function encryptWithAES(data, aesKey, iv) {
+function encryptWithAES(data, aesKey, iv)
+{
   const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
   let encrypted = cipher.update(data, "utf8", "base64");
   encrypted += cipher.final("base64");
@@ -68,7 +72,8 @@ function encryptWithAES(data, aesKey, iv) {
 }
 
 // AES Decryption
-function decryptWithAES(encryptedData, aesKey, iv) {
+function decryptWithAES(encryptedData, aesKey, iv)
+{
   const decipher = crypto.createDecipheriv("aes-256-cbc", aesKey, iv);
   let decrypted = decipher.update(encryptedData, "base64", "utf8");
   decrypted += decipher.final("utf8");
@@ -76,16 +81,19 @@ function decryptWithAES(encryptedData, aesKey, iv) {
 }
 
 // Generate random AES key and IV
-function generateAESKey() {
+function generateAESKey()
+{
   return crypto.randomBytes(32); // AES-256 key size
 }
 
-function generateIV() {
+function generateIV()
+{
   return crypto.randomBytes(16); // AES IV size
 }
 
 // Encrypt AES key with RSA public key
-function encryptAESKeyWithRSA(aesKey, recipientPublicKey) {
+function encryptAESKeyWithRSA(aesKey, recipientPublicKey)
+{
   return crypto
     .publicEncrypt(
       {
@@ -98,7 +106,8 @@ function encryptAESKeyWithRSA(aesKey, recipientPublicKey) {
     .toString("base64");
 }
 
-const generateKeyPair = async () => {
+const generateKeyPair = async () =>
+{
   const keyPair = await window.crypto.subtle.generateKey(
     {
       name: "RSA-OAEP",
@@ -164,7 +173,8 @@ const generateKeyPair = async () => {
 //   console.log("---Broadcast end---");
 // }
 
-function broadcastClientList() {
+function broadcastClientList()
+{
   console.log("Now broadcasting client list...");
   const clientUpdateMessage = {
     type: "client_update",
@@ -184,7 +194,8 @@ function broadcastClientList() {
   sendToAllClient(clientUpdateMessage);
 }
 
-function sendToAllClient(message) {
+function sendToAllClient(message)
+{
   console.log("Sending message to client: \n[");
   for (const key in clients) {
     console.log("   ", clients[key]["client-id"]);
@@ -193,7 +204,8 @@ function sendToAllClient(message) {
   const messageString = JSON.stringify(message);
   console.log("sending message:", messageString);
   const clientArray = Object.values(clients);
-  clientArray.forEach((c) => {
+  clientArray.forEach((c) =>
+  {
     if (c.ws && c.ws.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       c.ws.send(messageString); // Send the message
@@ -203,14 +215,16 @@ function sendToAllClient(message) {
   console.log("Finished sending message to clients.\n");
 }
 
-function sendToNeighbourhoodServers(message) {
+function sendToNeighbourhoodServers(message)
+{
   console.log(
     "Sending message to neighbourhood servers...\n",
     neighbourhoodServers
   );
   const messageString = JSON.stringify(message);
 
-  neighbourhoodServers.forEach((serverWs) => {
+  neighbourhoodServers.forEach((serverWs) =>
+  {
     if (serverWs.readyState === WebSocket.OPEN) {
       // Check if the connection is open
       serverWs.send(messageString); // Send the message
@@ -220,7 +234,8 @@ function sendToNeighbourhoodServers(message) {
   });
 }
 
-function generateClientId(publicKey) {
+function generateClientId(publicKey)
+{
   const hash = crypto.createHash("sha256");
   hash.update(publicKey);
   const digest = hash.digest(); // returns a Buffer
@@ -229,10 +244,12 @@ function generateClientId(publicKey) {
 }
 
 //#region Server to Server
-function addNeighbourhoodServer(serverUrl) {
+function addNeighbourhoodServer(serverUrl)
+{
   const serverWs = new WebSocket(serverUrl);
 
-  serverWs.on("open", () => {
+  serverWs.on("open", () =>
+  {
     console.log(`Connected to neighbourhood server: ${serverUrl}`);
     neighbourhoodServers.push(serverWs);
 
@@ -244,11 +261,13 @@ function addNeighbourhoodServer(serverUrl) {
     serverWs.send(JSON.stringify(helloMessage));
   });
 
-  serverWs.on("message", (message) => {
+  serverWs.on("message", (message) =>
+  {
     handleServerMessage(serverWs, JSON.parse(message));
   });
 
-  serverWs.on("close", () => {
+  serverWs.on("close", () =>
+  {
     console.log(`Disconnected from neighbourhood server: ${serverUrl}`);
     const index = neighbourhoodServers.indexOf(serverWs);
     if (index > -1) {
@@ -256,12 +275,14 @@ function addNeighbourhoodServer(serverUrl) {
     }
   });
 
-  serverWs.on("error", (error) => {
+  serverWs.on("error", (error) =>
+  {
     console.error(`WebSocket error with server ${serverUrl}:`, error);
   });
 }
 
-function handleServerMessage(serverWs, message) {
+function handleServerMessage(serverWs, message)
+{
   if (message.type === "server_hello") {
     console.log(`Received server_hello from ${message.sender}`);
   }
@@ -289,10 +310,12 @@ function handleServerMessage(serverWs, message) {
   }
 }
 
-function relayPrivateMessage(message) {
+function relayPrivateMessage(message)
+{
   const { destination_servers, chat, symm_keys, iv, client_info } = message;
 
-  destination_servers.forEach((serverUrl) => {
+  destination_servers.forEach((serverUrl) =>
+  {
     const targetServer = neighbourhoodServers.find((s) => s.url === serverUrl);
     if (targetServer && targetServer.readyState === WebSocket.OPEN) {
       targetServer.send(
@@ -309,7 +332,8 @@ function relayPrivateMessage(message) {
   });
 }
 
-function handlePrivateChatMessage(parsedMessage) {
+function handlePrivateChatMessage(parsedMessage)
+{
   const { destination_servers, chat, symm_keys, iv, client_info } =
     parsedMessage;
 
@@ -338,7 +362,8 @@ function handlePrivateChatMessage(parsedMessage) {
 
 
 //#region WebSocket
-wss.on("connection", (ws) => {
+wss.on("connection", (ws) =>
+{
   // onlineUsers.add(ws);
   // const users = Array.from(onlineUsers);
   // const message = JSON.stringify({ type: 'onlineUsers', users });
@@ -351,14 +376,16 @@ wss.on("connection", (ws) => {
   //   sender: server.address().address
   // }));
 
-  ws.on("message", async (message) => {
+  ws.on("message", async (message) =>
+  {
     const parsedMessage = JSON.parse(message);
     console.log("Received message:", parsedMessage);
 
     if (parsedMessage.type === "client_update_request") {
       broadcastClientList();
     } else if (parsedMessage.type == "client_update") {
-      data.clients.forEach((client) => {
+      data.clients.forEach((client) =>
+      {
         clients[client["public-key"]] = {
           ws: clients[client["public-key"]]
             ? clients[client["public-key"]].ws
@@ -368,7 +395,7 @@ wss.on("connection", (ws) => {
       });
     } else if (parsedMessage.type === "client_list_request") {
       let serverAddress = server.address().address || "localhost";
-      if(serverAddress === "::") serverAddress = "localhost";
+      if (serverAddress === "::") serverAddress = "localhost";
       sendToAllClient({
         type: "client_list",
         servers: [
@@ -381,6 +408,33 @@ wss.on("connection", (ws) => {
             })),
           },
         ],
+      });
+    } else if (parsedMessage.type === "generate_key_pair") {
+      const { publicKey, privateKey } =
+        crypto.generateKeyPairSync("rsa", {
+          modulusLength: 2048,
+          publicKeyEncoding: {
+            type: "spki",
+            format: "pem",
+          },
+          privateKeyEncoding: {
+            type: "pkcs8",
+            format: "pem",
+          },
+        });
+      message = {
+        type: "key_pair_result",
+        clientID: parsedMessage.clientID,
+        messagePublicKey: publicKey,
+        messagePrivateKey: privateKey,
+      }
+      const clientArray = Object.values(clients);
+      clientArray.forEach((c) =>
+      {
+        if (c.ws && c.ws.readyState === WebSocket.OPEN && c["client-id"] === parsedMessage.clientID) {
+          c.ws.send(JSON.stringify(message)); // Send the message
+          console.log("Message key is sent");
+        }
       });
     } else if (parsedMessage.type === "signed_data") {
       // Below must have parsedMessage.data
@@ -401,8 +455,6 @@ wss.on("connection", (ws) => {
         // } else if (data.type == "public_chat") {
         //   sendToAllClient(parsedMessage);
       }
-
-      // Handle client list requests
       else if (data.type === "fileTransfer") {
         const fileLink = data.fileLink;
 
@@ -486,7 +538,8 @@ wss.on("connection", (ws) => {
     } else sendToAllClient(parsedMessage);
   });
 
-  ws.on("close", () => {
+  ws.on("close", () =>
+  {
     // delete clients[userName];
     // broadcastOnlineUsers();
   });
@@ -512,7 +565,8 @@ wss.on("connection", (ws) => {
 //#region Listen
 
 // PORT = 3001;
-server.listen(PORT, () => {
+server.listen(PORT, () =>
+{
   console.log(`> Server started on port ${PORT}`);
 });
 //#endregion

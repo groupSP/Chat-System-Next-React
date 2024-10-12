@@ -1,11 +1,7 @@
-// src/utils/crypto.ts
-
-/**
- * crypto.ts
- *
- * This module provides cryptographic functions for the chat system,
- * including AES encryption/decryption and RSA encryption for key exchange.
- */
+import CryptoJS from "crypto-js";
+import JSEncrypt from "jsencrypt";
+import NodeRSA from "node-rsa";
+import crypto from "crypto";
 
 export async function generateRandomBytes(length: number): Promise<Uint8Array> {
   const randomBytes = new Uint8Array(length);
@@ -28,64 +24,6 @@ export const importRSAPublicKey = async (pem: string): Promise<CryptoKey> => {
   );
 };
 
-export const encryptAES = async (
-  message: string,
-  aesKey: CryptoKey,
-  iv: Uint8Array
-): Promise<string> => {
-  const encoder = new TextEncoder();
-  const encodedMessage = encoder.encode(message);
-
-  const ciphertext = await window.crypto.subtle.encrypt(
-    {
-      name: "AES-GCM",
-      iv: iv, // Initialization vector
-    },
-    aesKey,
-    encodedMessage
-  );
-
-  // Convert ciphertext to Base64
-  return arrayBufferToBase64(ciphertext);
-};
-
-export async function decryptAES(
-  ciphertext: string,
-  aesKey: CryptoKey,
-  iv: Uint8Array
-): Promise<string> {
-  const ciphertextBuffer = base64ToArrayBuffer(ciphertext);
-
-  const decryptedBuffer = await window.crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv: iv,
-    },
-    aesKey,
-    ciphertextBuffer
-  );
-
-  const decoder = new TextDecoder();
-  return decoder.decode(decryptedBuffer);
-}
-
-export const encryptAESKeyWithRSA = async (
-  aesKey: CryptoKey,
-  recipientPublicKey: CryptoKey
-): Promise<string> => {
-  const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
-
-  const encryptedKey = await window.crypto.subtle.encrypt(
-    {
-      name: "RSA-OAEP",
-    },
-    recipientPublicKey,
-    rawAesKey
-  );
-
-  return arrayBufferToBase64(encryptedKey);
-};
-
 export async function importRSAPrivateKey(pem: string): Promise<CryptoKey> {
   const binaryDer = pemToArrayBuffer(pem);
 
@@ -98,33 +36,6 @@ export async function importRSAPrivateKey(pem: string): Promise<CryptoKey> {
     },
     true,
     ["decrypt"]
-  );
-}
-
-export async function decryptAESKeyWithRSA(
-  encryptedAESKey: string,
-  privateKey: CryptoKey
-): Promise<CryptoKey> {
-  const encryptedKeyBuffer = base64ToArrayBuffer(encryptedAESKey);
-
-  // Decrypt the AES key using RSA-OAEP
-  const decryptedAesKeyBuffer = await window.crypto.subtle.decrypt(
-    {
-      name: "RSA-OAEP",
-    },
-    privateKey,
-    encryptedKeyBuffer
-  );
-
-  // Import the decrypted AES key
-  return window.crypto.subtle.importKey(
-    "raw",
-    decryptedAesKeyBuffer,
-    {
-      name: "AES-GCM",
-    },
-    true,
-    ["encrypt", "decrypt"]
   );
 }
 
@@ -243,20 +154,6 @@ export const encryptWithAES = async (
   return arrayBufferToBase64(encrypted); // Convert encrypted ArrayBuffer to Base64
 };
 
-// Function to generate RSA key pair (for encryption using RSA-OAEP)
-export const generateRSAKeyPair = async (): Promise<CryptoKeyPair> => {
-  return await window.crypto.subtle.generateKey(
-    {
-      name: "RSA-OAEP",
-      modulusLength: 2048,
-      publicExponent: new Uint8Array([0x01, 0x00, 0x01]), // 65537
-      hash: { name: "SHA-256" }, // Use SHA-256 for hashing
-    },
-    true, // Keys should be extractable for exporting
-    ["encrypt", "decrypt"] // For encrypting and decrypting
-  );
-};
-
 // // Convert ArrayBuffer to Base64
 // const arrayBufferToBase64 = (buffer: ArrayBuffer): string => {
 //   const binary = String.fromCharCode(...new Uint8Array(buffer));
@@ -320,3 +217,86 @@ export const decryptWithAES = async (
   const decoder = new TextDecoder();
   return decoder.decode(decrypted);
 };
+
+// Encrypting message using AES
+export const encryptAES = (message: string, secretKey: string): string => {
+  const encrypted = CryptoJS.AES.encrypt(message, secretKey).toString();
+  return encrypted;
+};
+
+// Decrypting message using AES
+export const decryptAES = (
+  encryptedMessage: string,
+  secretKey: string
+): string => {
+  const bytes = CryptoJS.AES.decrypt(encryptedMessage, secretKey);
+  const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+  return decrypted;
+};
+
+// Generate RSA key pair
+export const generateRSAKeyPair = () => {
+  const key = new NodeRSA({ b: 2048 });
+  const publicKey = key.exportKey("public");
+  const privateKey = key.exportKey("private");
+  return { publicKey, privateKey };
+};
+
+// Encrypt AES key using RSA public key
+export const encryptAESKeyWithRSA = (
+  aesKey: string,
+  publicKey: string
+): string => {
+  const key = new NodeRSA(publicKey);
+  const encryptedAESKey = key.encrypt(aesKey, "base64");
+  return encryptedAESKey;
+};
+
+// Decrypt AES key using RSA private key
+export const decryptAESKeyWithRSA = (
+  encryptedAESKey: string,
+  privateKey: string
+): string => {
+  const key = new NodeRSA(privateKey);
+  const decryptedAESKey = key.decrypt(encryptedAESKey, "utf8");
+  return decryptedAESKey;
+};
+
+export const cryptoKeyToBase64 = async (key: CryptoKey): Promise<string> => {
+  const exportedKey = await window.crypto.subtle.exportKey(
+    "spki", // Use "spki" for public keys and "pkcs8" for private keys
+    key
+  );
+
+  // Convert ArrayBuffer to Base64
+  return arrayBufferToBase64(exportedKey);
+};
+
+export const decryptMessage = (
+  privateKey: string,
+  aesKey: string,
+  text: string,
+) => {
+  // Initialize JSEncrypt with the private RSA key
+  const decryptor = new JSEncrypt();
+  decryptor.setPrivateKey(privateKey);
+
+  // Decrypt the AES key using the RSA private key
+  const decryptedAESKeyHex = decryptor.decrypt(aesKey);
+  if (!decryptedAESKeyHex) {
+    throw new Error("Failed to decrypt AES key");
+  }
+
+  // Convert the AES key from Hex to a usable format for CryptoJS
+  const parsedAesKey = CryptoJS.enc.Hex.parse(decryptedAESKeyHex);
+
+  // Decrypt the actual message using the decrypted AES key
+  const decryptedMessage = CryptoJS.AES.decrypt(text, parsedAesKey);
+  const decryptedText = decryptedMessage.toString(CryptoJS.enc.Utf8);
+
+  return decryptedText;
+};
+
+
+
+

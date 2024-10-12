@@ -511,9 +511,9 @@ wss.on("connection", (ws) => {
 
 //#region Listen
 
-PORT = 3001;
+// PORT = 3001;
 server.listen(PORT, () => {
   console.log(`> Server started on port ${PORT}`);
 });
 //#endregion
-addNeighbourhoodServer("ws://localhost:3000");
+// addNeighbourhoodServer("ws://localhost:3000");

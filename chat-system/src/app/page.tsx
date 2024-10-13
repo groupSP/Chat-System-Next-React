@@ -18,11 +18,13 @@ import {
   decryptAES,
   cryptoKeyToBase64,
   decryptMessage,
+  importPrivateKey
 } from "../utils/cryptoHelper";
 import { toast } from "sonner";
 import CryptoJS from "crypto-js";
 import JSEncrypt from "jsencrypt";
-import crypto from "crypto";
+import axios from 'axios';
+import NodeRSA from "node-rsa";
 
 export class User {
   id: string;
@@ -71,8 +73,7 @@ let processedFileMessages: string[] = [];
 //#region ChatSystem
 export default function ChatSystem() {
   const publicKey = useRef("");
-  const publicKeyCrypto = useRef<CryptoKey | null>(null);
-  const privateKeyCrypto = useRef<CryptoKey | null>(null);
+  const privateKey = useRef("");
   const aesKey = useRef<CryptoKey | null>(null);
   const iv = useRef<Uint8Array | null>(null);
 
@@ -123,50 +124,6 @@ export default function ChatSystem() {
         from: username,
       };
       ws.send(JSON.stringify(await signData(helloMessage)));
-
-      // document.getElementById('forward-file').addEventListener('click', () => {
-      //   const modal = document.getElementById('forward-modal');
-      //   const forwardList = document.getElementById('forward-user-list');
-
-      //   // Clear the previous user list
-      //   forwardList.innerHTML = '';
-
-      //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
-      //   onlineUsersRef.forEach(user => {
-      //     if (user !== username && user && user.trim() !== 'undefined') {
-      //       const option = document.createElement('option');
-      //       option.value = user;
-      //       option.textContent = user;
-      //       forwardList.appendChild(option);
-      //     }
-      //   });
-
-      //   // Show the modal to select the user for forwarding
-      //   modal.style.display = 'block';
-      // });
-
-      // Forwarding the selected message to the chosen user
-      // document.getElementById('forward-btn').addEventListener('click', () => {
-      //   const selectedUser = document.getElementById('forward-user-list').value;
-
-      //   selectedMessages.forEach(message => {
-      //     // Forwarding the message to the selected user
-      //     ws.send(JSON.stringify({
-      //       type: 'forwardMessage',
-      //       data: {
-      //         originalMessage: message,
-      //         forwardTo: selectedUser
-      //       }
-      //     }));
-
-      //     // Display the message in the chatbox as a forwarded message
-      //     displayMessage('You (Forwarded)', message);
-      //   });
-
-      //   // Hide the modal after forwarding
-      //   document.getElementById('forward-modal').style.display = 'none';
-      //   selectedMessages = []; // Clear selected messageList
-      // });
     };
 
     ws.onmessage = (event) => {
@@ -218,25 +175,20 @@ export default function ChatSystem() {
           console.log("Received encrypted chat message:", data.chat);
           console.log("Received symm_keys:", data.symm_keys);
           console.log("Received iv:", data.iv);
-          // (async () => {
-          //   const decryptedAESKey = await decryptAESKeyWithRSA(data.symm_keys, await cryptoKeyToBase64(privateKeyCrypto.current!));
-          //   const decryptedMessage = decryptAES(data.chat, decryptedAESKey);
-          //   console.log("Decrypted message:", decryptedMessage);
-          // })();
           (async () => {
-            const decryptor = new JSEncrypt();
-            decryptor.setPrivateKey(await cryptoKeyToBase64(privateKeyCrypto.current!));
+            try {
+              const response = await axios.post("/api/cryptoServer", {
+                action: "decryptMessage",
+                message: data.chat,
+                encryptedAESKey: data.symm_keys[0],
+                privateKey,
+              });
 
-            // 2. Decrypt the AES key using RSA private key
-            const decryptedAESKey = decryptor.decrypt(await cryptoKeyToBase64(data.symm_keys[0]));
-            if (!decryptedAESKey) {
-              throw new Error("Failed to decrypt the AES key with RSA.");
+              const { decryptedMessage } = response.data;
+              console.log("Decrypted message:", decryptedMessage);
+            } catch (error) {
+              console.error("Error decrypting message:", error);
             }
-
-            // 3. Decrypt the message using the decrypted AES key
-            const decryptedBytes = CryptoJS.AES.decrypt(data.chat, decryptedAESKey);
-            const decryptedMessage = decryptedBytes.toString(CryptoJS.enc.Utf8);
-            console.log("-----------Decrypted message:", decryptedMessage);
           })();
         }
       } else if (parsedMessage.type === "client_list") {
@@ -318,43 +270,52 @@ export default function ChatSystem() {
     const recipient = onlineUsersRef.current.find(
       (user) => user.id === message.recipient.id
     );
-    if (!recipient || !recipient.publicKey) {
+    if (!recipient || !recipient.publicKey ) {
       console.error("Recipient not found or lacks a public key.");
       return;
     }
 
-    const encryptor = new JSEncrypt();
-    encryptor.setPublicKey(recipient.publicKey);
+    try {
+      // Generate a random AES key (WordArray, not a string)
+      const aesKey = CryptoJS.lib.WordArray.random(16); // 128-bit AES key
+      console.log("Generated AES Key:", aesKey.toString(CryptoJS.enc.Hex));
 
-    const privateAESKey = await cryptoKeyToBase64(aesKey.current);
-    // 2. Encrypt the message using AES
-    const encryptedMessage = CryptoJS.AES.encrypt(message.content, privateAESKey).toString();
+      // Encrypt the message with AES key (ensure AES key is passed as WordArray)
+      const encryptedMessage = CryptoJS.AES.encrypt(message.content, aesKey).toString();
+      console.log("Encrypted Message:", encryptedMessage);
 
-    // 3. Encrypt the AES key using the recipient's RSA public key
-    const encryptedAESKey = encryptor.encrypt(privateAESKey);
-    if (!encryptedAESKey) {
-      throw new Error("Failed to encrypt the AES key with RSA.");
+      // Encrypt the AES key using the recipient's RSA public key
+      const rsa = new NodeRSA();
+      rsa.importKey(recipient.publicKey, "pkcs8-public-pem"); // Use the provided public key
+      const encryptedAESKey = rsa.encrypt(aesKey.toString(CryptoJS.enc.Base64), "base64"); // Encrypt AES key as Base64 string
+      console.log("Encrypted AES Key:", encryptedAESKey);
+
+      const ivBase64 = arrayBufferToBase64(iv.current!);
+
+      // Create the private message with the encrypted message and encrypted AES key
+      const privateMessage = await signData({
+        type: "chat",
+        destination_servers: [recipientServer],
+        iv: ivBase64, // Base64 encoded IV
+        symm_keys: [encryptedAESKey], // AES key encrypted with recipient's RSA key
+        chat: encryptedMessage, // Base64 encoded AES encrypted message
+        client_info: {
+          "client-id": userID, // Sender's client ID
+          "server-id": serverID, // Sender's server ID
+        },
+        time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expiration time
+      });
+
+      ws.send(JSON.stringify(privateMessage));
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error("Error during encryption:", error.message);
+        throw new Error("Encryption failed: " + error.message);
+      } else {
+        console.error("Unknown error during encryption:", error);
+        throw new Error("Unknown encryption error");
+      }
     }
-
-    // Encode IV as Base64
-    const ivBase64 = arrayBufferToBase64(iv.current!);
-
-    // Create the private message with the encrypted message and encrypted AES key
-    const privateMessage = await signData({
-      type: "chat",
-      destination_servers: [recipientServer],
-      iv: ivBase64, // Base64 encoded IV
-      symm_keys: [encryptedAESKey], // AES key encrypted with recipient's RSA key
-      chat: encryptedMessage, // Base64 encoded AES encrypted message
-      client_info: {
-        "client-id": userID, // Sender's client ID
-        "server-id": serverID, // Sender's server ID
-      },
-      time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expiration time
-    });
-
-    // Send the private message over WebSocket
-    ws.send(JSON.stringify(privateMessage));
   };
 
   // Helper function to sign the message (using RSA-PSS and SHA-256)
@@ -404,7 +365,7 @@ export default function ChatSystem() {
       type: "signed_data",
       data: data,
       counter: counter.current++,
-      signature: await SignMessage(data, counter.current, privateKeyCrypto.current!),
+      signature: await SignMessage(data, counter.current, await importPrivateKey(privateKey.current!)),
     };
   };
 
@@ -418,38 +379,18 @@ export default function ChatSystem() {
   };
 
   const generateKeyPair = async () => {
-    if (!ws) {
-      console.error("WebSocket connection not established.");
-      return;
+    try {
+      const response = await axios.post("/api/cryptoServer", {
+        action: "generateKeyPair",
+      });
+
+      const { publicKey: publicKeyResponse, privateKey: privateKeyResponse } = response.data;
+      console.log("Generated key pair:", publicKeyResponse, privateKeyResponse);
+      publicKey.current = publicKeyResponse;
+      privateKey.current = privateKeyResponse;
+    } catch (error) {
+      console.error("Error generating key pair:", error);
     }
-
-    // Generate RSA key pair for signing (use RSA-PSS for signing)
-    const keyPair = await window.crypto.subtle.generateKey(
-      {
-        name: "RSA-PSS",
-        modulusLength: 2048,
-        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-        hash: { name: "SHA-256" },
-      },
-      true, // Can extract the key for export
-      ["sign", "verify"] // For signing and verifying signatures
-    );
-
-    // Store the keys as CryptoKey objects
-    publicKeyCrypto.current = keyPair.publicKey;
-    privateKeyCrypto.current = keyPair.privateKey;
-
-    // If you need to send the public key to others, convert it to PEM/Base64
-    const publicKeyTem = await window.crypto.subtle.exportKey(
-      "spki",
-      publicKeyCrypto.current!
-    );
-    const publicKeyBase64 = btoa(
-      String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
-    );
-
-    // Set publicKeyBase64 as the network-friendly representation
-    publicKey.current = publicKeyBase64; // Use this to share over the network
 
     if (!username) setUsername("Anonymous");
 
@@ -522,7 +463,7 @@ export default function ChatSystem() {
   return (
     <div className="container mx-auto p-4 min-h-screen bg-background text-foreground">
       <AnimatePresence mode="wait">
-        {privateKeyCrypto.current ? (
+        {ws ? (
           <motion.div
             key="chat"
             initial={{ opacity: 0, y: 20 }}

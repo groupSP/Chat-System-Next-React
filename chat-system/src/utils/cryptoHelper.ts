@@ -275,7 +275,7 @@ export const cryptoKeyToBase64 = async (key: CryptoKey): Promise<string> => {
 export const decryptMessage = (
   privateKey: string,
   aesKey: string,
-  text: string,
+  text: string
 ) => {
   // Initialize JSEncrypt with the private RSA key
   const decryptor = new JSEncrypt();
@@ -297,6 +297,44 @@ export const decryptMessage = (
   return decryptedText;
 };
 
+export const importPrivateKey = async (pem: string): Promise<CryptoKey> => {
+  // Remove the PEM header and footer, and convert the base64 string to an ArrayBuffer
+  if (!pem) {
+    throw new Error("Invalid PEM string");
+  }
+  const pemHeader = "-----BEGIN PRIVATE KEY-----";
+  const pemFooter = "-----END PRIVATE KEY-----";
 
+  if (pem.startsWith(pemHeader) && pem.endsWith(pemFooter)) {
+    const pemContents = pem
+      .replace(pemHeader, "") // Remove header
+      .replace(pemFooter, "") // Remove footer
+      .replace(/\s+/g, ""); // Remove newlines and spaces
 
+    // Ensure the PEM contents is valid Base64
+    try {
+      const binaryDerString = window.atob(pemContents); // Decode the Base64 string
+      const binaryDer = new Uint8Array(binaryDerString.length);
 
+      for (let i = 0; i < binaryDerString.length; i++) {
+        binaryDer[i] = binaryDerString.charCodeAt(i);
+      }
+
+      // Import the key into the Web Crypto API
+      return window.crypto.subtle.importKey(
+        "pkcs8", // Private key format
+        binaryDer.buffer, // The ArrayBuffer of the key
+        {
+          name: "RSA-PSS", // Algorithm for signing
+          hash: "SHA-256", // Hash algorithm
+        },
+        true, // Whether the key is extractable
+        ["sign"] // Key usage
+      );
+    } catch (e) {
+      throw new Error("Failed to decode Base64 PEM key content.");
+    }
+  } else {
+    throw new Error("Invalid PEM format.");
+  }
+};

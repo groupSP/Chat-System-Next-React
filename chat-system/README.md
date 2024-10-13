@@ -12,7 +12,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 ## Getting Started
 
 First, install the dependancy: ```npm i```.
-Second, go to the path that contain package.json.
+Second, go to the path that contain package.json ```cd chat-system```.
 Third, go to websocket_server folder, you can go by typing: ```cd src\websocket_server```.
 Then, run the server before running the client webpage: ```node server.js```
 Finally, open another terminal in the path that contain package.json and run:

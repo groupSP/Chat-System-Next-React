@@ -67,8 +67,8 @@ type Client = {
   username?: string;
 };
 
-let processedFileMessages: string[] = [];
 const PORT = 3000;
+// const PORT = 4000;
 
 //#region ChatSystem
 export default function ChatSystem() {
@@ -89,7 +89,7 @@ export default function ChatSystem() {
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [recipient, setRecipient] = useState("public_chat");
 
-  const onlineUsersRef = useRef<User[]>([]); 
+  const onlineUsersRef = useRef<User[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
 
   useEffect(() => {
@@ -154,18 +154,26 @@ export default function ChatSystem() {
         );
       } else if (parsedMessage.type === "fileTransfer") {
         if (parsedMessage.fileName && parsedMessage.from) {
-          const messageId = `${parsedMessage.from}-${parsedMessage.fileName}`;
-          if (parsedMessage.from !== username) {
-            processedFileMessages.push(messageId);
-            console.log("Received file with id: ", messageId);
+          if (parsedMessage.to === publicKey.current) {
+            const sender = onlineUsersRef.current.find(
+              (user) => user.publicKey === parsedMessage.from
+            );
             setMessageList((prev) => [
               ...prev,
               new Message(
-                new User(parsedMessage.from, ""),
+                new User(sender?.id ?? "Unknown", sender?.publicKey),
                 parsedMessage.fileName,
+                new User(
+                  onlineUsersRef.current.find(
+                    (user) => user.publicKey === parsedMessage.to
+                  )?.id ?? "Unknown",
+                  publicKey.current,
+                  username
+                ),
                 parsedMessage.fileLink
               ),
             ]);
+            console.log("Received file:", parsedMessage.fileName);
           }
         }
       } else if (parsedMessage.type === "client_list") {
@@ -331,12 +339,15 @@ export default function ChatSystem() {
   };
 
   const sendFile = (fileName: string, recipient: string, fileLink: string) => {
+    const recipientPublicKey = onlineUsers.find(
+      (user) => user.id === recipient
+    )?.publicKey;
     ws?.send(
       JSON.stringify({
         type: "fileTransfer",
         fileName,
-        from: userID,
-        to: recipient,
+        from: publicKey.current,
+        to: recipientPublicKey,
         timestamp: new Date().toISOString(),
         fileLink,
       })
@@ -347,7 +358,7 @@ export default function ChatSystem() {
       new Message(
         new User(userID, publicKey.current, username),
         fileName,
-        new User(recipient),
+        new User(recipient, recipientPublicKey),
         fileLink
       ),
     ]);

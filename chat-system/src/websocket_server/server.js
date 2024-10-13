@@ -408,12 +408,13 @@ wss.on("connection", (ws) => {
         const fileLink = data.fileLink;
 
         if (data.to && clients[data.to]) {
-          clients[data.to].send(
+          clients[data.to].ws.send(
             JSON.stringify({
               type: "fileTransfer",
-              from: userID,
+              from: data.from,
               fileName: data.fileName,
               fileLink: fileLink,
+              to: data.to,
             })
           );
         } else {

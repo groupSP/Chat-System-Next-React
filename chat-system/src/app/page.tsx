@@ -89,7 +89,7 @@ export default function ChatSystem() {
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [recipient, setRecipient] = useState("public_chat");
 
-  const onlineUsersRef = useRef<User[]>([]);
+  const onlineUsersRef = useRef<User[]>([]); 
   const [onlineUsers, setOnlineUsers] = useState<User[]>([]);
 
   useEffect(() => {

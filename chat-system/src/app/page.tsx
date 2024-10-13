@@ -221,13 +221,21 @@ export default function ChatSystem() {
           if (data.symm_keys !== publicKey.current) return;
           onlineUsersRef.current.find((user) => {
             if (user.id === data.client_info["client-id"]) {
-              user.messages.push(
+              // user.messages.push(
+              //   new Message(
+              //     user,
+              //     data.chat,
+              //     new User(userID, publicKey.current, username)
+              //   )
+              // );
+              setMessageList((prev) => [
+                ...prev,
                 new Message(
-                  user,
+                  new User(data.client_info["client-id"]),
                   data.chat,
-                  new User(userID, publicKey.current, username)
-                )
-              );
+                  user,
+                ),
+              ]);
             }
           });
         }
@@ -299,25 +307,27 @@ export default function ChatSystem() {
       symm_keys: recipient.publicKey, // AES key encrypted with recipient's RSA key
       chat: message.content, // Base64 encoded AES encrypted message
       client_info: {
-        "client-id": userID, // Sender's client ID
+        "client-id": message.sender.id, // Sender's client ID
         "server-id": serverID, // Sender's server ID
       },
       time_to_die: new Date(Date.now() + 60000).toISOString(), // Message expiration time
     });
+    console.log("Sending private message:", privateMessage);
 
     // Send the private message over WebSocket
     ws.send(JSON.stringify(privateMessage));
-    onlineUsersRef.current.find((user) => {
-      if (user.id === message.recipient.id) {
-        user.messages.push(
-          new Message(
-            user,
-            message.content,
-            new User(userID, publicKey.current, username)
-          )
-        );
-      }
-    });
+    // onlineUsersRef.current.find((user) => {
+    //   if (user.id === message.recipient.id) {
+    //     user.messages.push(
+    //       new Message(
+    //         user,
+    //         message.content,
+    //         new User(userID, publicKey.current, username)
+    //       )
+    //     );
+    //   }
+    // });
+    setMessageList((prev) => [...prev, message]);
   };
 
   // Helper function to sign the message (using RSA-PSS and SHA-256)
@@ -507,7 +517,6 @@ export default function ChatSystem() {
               setOffline={setOffline}
               sendFile={sendFile}
               recipient={recipient}
-              onlineUsers={onlineUsers}
             />
           </motion.div>
         ) : (

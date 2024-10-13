@@ -60,7 +60,7 @@ export default function Sidebar({
                     <HoverCardTrigger>
                       <Button
                         variant="link"
-                        className={`${!user.isOnline && "text-gray-500"}`}
+                        // className={`${user.isOffline && "text-gray-500"}`}
                         value={user.id}
                         onClick={() => setRecipient(user.id)}
                       >

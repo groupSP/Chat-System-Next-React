@@ -170,10 +170,10 @@ function broadcastClientList() {
     type: "client_update",
     clients: [],
   };
-
+  const now = new Date();
   // Iterate over the clients object and build the list of connected clients
   for (const publicKey in clients) {
-    const { "client-id": id } = clients[publicKey]; // Get the client ID
+    const { "client-id": id, lastSeen } = clients[publicKey]; // Get the client ID
     clientUpdateMessage.clients.push({
       "client-id": id,
       "public-key": publicKey,
@@ -336,7 +336,6 @@ function handlePrivateChatMessage(parsedMessage) {
   }
 }
 
-
 //#region WebSocket
 wss.on("connection", (ws) => {
   // onlineUsers.add(ws);
@@ -364,11 +363,13 @@ wss.on("connection", (ws) => {
             ? clients[client["public-key"]].ws
             : null,
           "client-id": client["client-id"],
+          lastSeen: client.lastSeen,
         };
       });
     } else if (parsedMessage.type === "client_list_request") {
       let serverAddress = server.address().address || "localhost";
-      if(serverAddress === "::") serverAddress = "localhost";
+      if (serverAddress === "::") serverAddress = "localhost";
+      const now = new Date();
       sendToAllClient({
         type: "client_list",
         servers: [
@@ -382,6 +383,11 @@ wss.on("connection", (ws) => {
           },
         ],
       });
+    } else if (parsedMessage.type === "heartbeat") {
+      const { publicKey } = parsedMessage;
+      if (clients[publicKey]) {
+        clients[publicKey].lastSeen = Date.now();
+      }
     } else if (parsedMessage.type === "signed_data") {
       // Below must have parsedMessage.data
       const data = parsedMessage.data;
@@ -395,15 +401,10 @@ wss.on("connection", (ws) => {
         clients[data.public_key] = {
           ws: ws,
           "client-id": generateClientId(data.public_key),
+          lastSeen: new Date(),
         };
-        // Broadcast updated client list to all clients
         broadcastClientList();
-        // } else if (data.type == "public_chat") {
-        //   sendToAllClient(parsedMessage);
-      }
-
-      // Handle client list requests
-      else if (data.type === "fileTransfer") {
+      } else if (data.type === "fileTransfer") {
         const fileLink = data.fileLink;
 
         if (data.to && clients[data.to]) {
@@ -424,65 +425,6 @@ wss.on("connection", (ws) => {
           });
         }
       } else sendToAllClient(parsedMessage);
-
-      //   // Handle forwarding messages (for text only)
-      //   else if (data.type === 'forwardMessage') {
-      //     const originalMessage = data.data.originalMessage;
-      //     const forwardTo = data.data.forwardTo;
-
-      //     if (clients[forwardTo]) {
-      //       clients[forwardTo].send(JSON.stringify({
-      //         type: 'privateMessage',
-      //         from: `${userName} (Forwarded)`,
-      //         message: originalMessage,
-      //       }));
-      //     }
-      //   }
-
-      //   else if (data.type === 'onlineUsers') {
-      //     ws.send(JSON.stringify({ type: 'onlineUsers', users: Array.from(onlineUsers) }));
-      //   }
-
-      //   if (data.counter && data.counter > messageCounters[userName]) {
-      //     messageCounters[userName] = data.counter;
-
-      //     if (data.type === 'privateMessage') {
-      //       const recipientWs = clients[data.to];
-      //       if (recipientWs) {
-      //         recipientWs.send(JSON.stringify({
-      //           type: 'privateMessage',
-      //           from: userName,
-      //           message: data.message
-      //         }));
-      //       }
-      //     } else if (data.type === 'groupMessage') {
-      //       broadcast({
-      //         type: 'groupMessage',
-      //         from: userName,
-      //         message: data.message
-      //       });
-      //     }
-      //   }
-
-      // else if (data.type === 'fileTransfer') {
-      //     const fileLink = `http://${server.address().address}:${server.address().port}/files/${data.fileName}`;
-
-      //     if (data.to && clients[data.to]) {
-      //       clients[data.to].send(JSON.stringify({
-      //         type: 'fileTransfer',
-      //         from: userName,
-      //         fileName: data.fileName,
-      //         fileLink: fileLink
-      //       }));
-      //     } else {
-      //       broadcast({
-      //         type: 'fileTransfer',
-      //         from: userName,
-      //         fileName: data.fileName,
-      //         fileLink: fileLink
-      //       });
-      //     }
-      //   }
     } else sendToAllClient(parsedMessage);
   });
 
@@ -499,6 +441,20 @@ wss.on("connection", (ws) => {
   //     type: "server_hello",
   //     sender: server.address().address,
   // } }));
+  const timeInterval = 60000;
+  setInterval(() =>
+  {
+    // console.log("Checking for disconnected users................................................");
+    const now = Date.now();
+    for (const publicKey in clients) {
+      if (now - clients[publicKey].lastSeen > timeInterval) {
+        console.log(`A user deemed disconnected (no heartbeat)`);
+        clients[publicKey].ws.terminate();
+        delete clients[publicKey];
+        broadcastClientList();
+      }
+    }
+  }, timeInterval);
 });
 
 //#region Links
@@ -511,7 +467,7 @@ wss.on("connection", (ws) => {
 
 //#region Listen
 
-// PORT = 3001;
+// PORT = 4000;
 server.listen(PORT, () => {
   console.log(`> Server started on port ${PORT}`);
 });

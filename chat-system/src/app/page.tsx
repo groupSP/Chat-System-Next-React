@@ -28,7 +28,6 @@ export class User {
   id: string;
   publicKey?: string;
   username?: string;
-  isOnline: boolean = true;
   messages: Message[] = [];
 
   constructor(id: string, publicKey?: string, username?: string) {
@@ -64,10 +63,12 @@ export class Message {
 type Client = {
   "client-id": string;
   "public-key": string;
+  offline: boolean;
   username?: string;
 };
 
 let processedFileMessages: string[] = [];
+const PORT = 3000;
 
 //#region ChatSystem
 export default function ChatSystem() {
@@ -104,7 +105,7 @@ export default function ChatSystem() {
       ws.close();
     }
     // ws = new WebSocket(`ws://${window.location.host}`);
-    setWS(new WebSocket(`ws://localhost:3000/`));
+    setWS(new WebSocket(`ws://localhost:${PORT}/`));
   }, [retryAttempts]);
 
   useEffect(() => {
@@ -113,6 +114,7 @@ export default function ChatSystem() {
         console.error("WebSocket connection not established.");
       return;
     }
+
     ws.onopen = async () => {
       console.log("WebSocket connection opened.");
       await generateKeyPair();
@@ -124,6 +126,15 @@ export default function ChatSystem() {
         from: username,
       };
       ws.send(JSON.stringify(await signData(helloMessage)));
+      setInterval(() => {
+        // Send heartbeat every 45 seconds
+        const heartbeatMessage = {
+          type: "heartbeat",
+          publicKey: publicKey.current,
+        };
+        ws.send(JSON.stringify(heartbeatMessage));
+        // console.log("Sent heartbeat:", heartbeatMessage);
+      }, 45000);
     };
 
     ws.onmessage = (event) => {
@@ -131,7 +142,7 @@ export default function ChatSystem() {
       console.log("Received WebSocket message:", parsedMessage);
 
       if (parsedMessage.type === "client_update") {
-        addOnlineUser(
+        setOnlineUsers(
           parsedMessage.clients.map(
             (client: Client) =>
               new User(
@@ -198,7 +209,7 @@ export default function ChatSystem() {
         setOnlineUsers((prev) =>
           prev.map((user) =>
             user.id === parsedMessage.userID
-              ? { ...user, isOnline: false }
+              ? { ...user, isOffline: true }
               : user
           )
         );
@@ -233,7 +244,7 @@ export default function ChatSystem() {
                 new Message(
                   new User(data.client_info["client-id"]),
                   data.chat,
-                  user,
+                  user
                 ),
               ]);
             }
@@ -316,32 +327,8 @@ export default function ChatSystem() {
 
     // Send the private message over WebSocket
     ws.send(JSON.stringify(privateMessage));
-    // onlineUsersRef.current.find((user) => {
-    //   if (user.id === message.recipient.id) {
-    //     user.messages.push(
-    //       new Message(
-    //         user,
-    //         message.content,
-    //         new User(userID, publicKey.current, username)
-    //       )
-    //     );
-    //   }
-    // });
     setMessageList((prev) => [...prev, message]);
   };
-
-  // Helper function to sign the message (using RSA-PSS and SHA-256)
-  // async function signMessage(message: string, counter: number) {
-  //   const dataToSign = JSON.stringify({ message, counter });
-  //   const encoder = new TextEncoder();
-  //   const data = encoder.encode(dataToSign);
-  //   const signature = await window.crypto.subtle.sign(
-  //     { name: "RSA-PSS", saltLength: 32 },
-  //     privateKeyCrypto.current!, // Your private key
-  //     data
-  //   );
-  //   return btoa(String.fromCharCode(...Array.from(new Uint8Array(signature))));
-  // }
 
   const sendFile = (fileName: string, recipient: string, fileLink: string) => {
     ws?.send(
@@ -467,23 +454,23 @@ export default function ChatSystem() {
     }
   };
 
-  const addOnlineUser = (user: User[]) => {
-    const allUsers = [...onlineUsersRef.current];
-    user.forEach((addUser) => {
-      if (allUsers.some((u) => u.publicKey === addUser.publicKey)) {
-        const index = onlineUsersRef.current.findIndex(
-          (u) => u.publicKey === addUser.publicKey
-        );
-        allUsers[index].id = addUser.id;
-        allUsers[index].username = addUser.username ?? addUser.id;
+  // const addOnlineUser = (user: User[]) => {
+  //   const allUsers = [...onlineUsersRef.current];
+  //   user.forEach((addUser) => {
+  //     if (allUsers.some((u) => u.publicKey === addUser.publicKey)) {
+  //       const index = onlineUsersRef.current.findIndex(
+  //         (u) => u.publicKey === addUser.publicKey
+  //       );
+  //       allUsers[index].id = addUser.id;
+  //       allUsers[index].username = addUser.username ?? addUser.id;
 
-        if (allUsers[index].publicKey === publicKey.current)
-          setUsername(allUsers[index].username);
-      } else allUsers.push(addUser);
-    });
-    console.log("Online users:", allUsers);
-    setOnlineUsers(allUsers);
-  };
+  //       if (allUsers[index].publicKey === publicKey.current)
+  //         setUsername(allUsers[index].username);
+  //     } else allUsers.push(addUser);
+  //   });
+  //   console.log("Online users:", allUsers);
+  //   setOnlineUsers(allUsers);
+  // };
 
   const handleForward = () => {
     setShowForwardModal(true);

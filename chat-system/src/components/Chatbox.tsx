@@ -31,6 +31,7 @@ interface ChatboxProps {
   setOffline: () => void;
   sendFile: (fileName: string, recipient: string, fileLink: string) => void;
   recipient: string;
+  onlineUsers: User[];
 }
 
 interface UploadResponse {
@@ -45,6 +46,7 @@ export default function Chatbox({
   setOffline,
   sendFile,
   recipient,
+  onlineUsers,
 }: ChatboxProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
@@ -104,51 +106,50 @@ export default function Chatbox({
         <ScrollArea className="h-[calc(100vh-16rem)]">
           <div id="chat-messageList" className="space-y-4">
             <ul className="space-y-4">
-              {messageList.map(
-                (message, index) =>
-                  message.recipient.id === recipient && (
-                    <li
-                      key={index}
-                      className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
-                        message.sender.id === userID
-                          ? "bg-green-200"
-                          : "bg-slate-100"
-                      }`}
-                    >
-                      <div className="flex-shrink-0">
-                        <Avatar>
-                          <AvatarImage
-                            src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
-                            alt={message.displayName()}
-                          />
-                          <AvatarFallback>
-                            {message.displayName()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <div className="flex-grow">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-gray-500 text-sm">
-                            {message.displayName()}
-                          </span>
-                          <span className="font-sans mt-1">
-                            {message.content}
-                            {message.fileLink && (
-                              <a
-                                href={message.fileLink}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                → Click here to Download
-                              </a>
-                            )}
-                          </span>
-                        </div>
-                      </div>
-                    </li>
-                  )
-              )}
+              {(recipient === "public_chat"
+                ? messageList
+                : onlineUsers.find((user) => user.id === recipient)?.messages ??
+                  messageList
+              ).map((message, index) => (
+                <li
+                  key={index}
+                  className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
+                    message.sender.id === userID
+                      ? "bg-green-200"
+                      : "bg-slate-100"
+                  }`}
+                >
+                  <div className="flex-shrink-0">
+                    <Avatar>
+                      <AvatarImage
+                        src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
+                        alt={message.displayName()}
+                      />
+                      <AvatarFallback>{message.displayName()}</AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="flex-grow">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-500 text-sm">
+                        {message.displayName()}
+                      </span>
+                      <span className="font-sans mt-1">
+                        {message.content}
+                        {message.fileLink && (
+                          <a
+                            href={message.fileLink}
+                            download
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            → Click here to Download
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
         </ScrollArea>

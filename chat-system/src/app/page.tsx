@@ -29,6 +29,7 @@ export class User {
   publicKey?: string;
   username?: string;
   isOnline: boolean = true;
+  messages: Message[] = [];
 
   constructor(id: string, publicKey?: string, username?: string) {
     this.id = id;
@@ -123,50 +124,6 @@ export default function ChatSystem() {
         from: username,
       };
       ws.send(JSON.stringify(await signData(helloMessage)));
-
-      // document.getElementById('forward-file').addEventListener('click', () => {
-      //   const modal = document.getElementById('forward-modal');
-      //   const forwardList = document.getElementById('forward-user-list');
-
-      //   // Clear the previous user list
-      //   forwardList.innerHTML = '';
-
-      //   // Populate the online user list, excluding the current user and ignoring undefined or empty users
-      //   onlineUsersRef.forEach(user => {
-      //     if (user !== username && user && user.trim() !== 'undefined') {
-      //       const option = document.createElement('option');
-      //       option.value = user;
-      //       option.textContent = user;
-      //       forwardList.appendChild(option);
-      //     }
-      //   });
-
-      //   // Show the modal to select the user for forwarding
-      //   modal.style.display = 'block';
-      // });
-
-      // Forwarding the selected message to the chosen user
-      // document.getElementById('forward-btn').addEventListener('click', () => {
-      //   const selectedUser = document.getElementById('forward-user-list').value;
-
-      //   selectedMessages.forEach(message => {
-      //     // Forwarding the message to the selected user
-      //     ws.send(JSON.stringify({
-      //       type: 'forwardMessage',
-      //       data: {
-      //         originalMessage: message,
-      //         forwardTo: selectedUser
-      //       }
-      //     }));
-
-      //     // Display the message in the chatbox as a forwarded message
-      //     displayMessage('You (Forwarded)', message);
-      //   });
-
-      //   // Hide the modal after forwarding
-      //   document.getElementById('forward-modal').style.display = 'none';
-      //   selectedMessages = []; // Clear selected messageList
-      // });
     };
 
     ws.onmessage = (event) => {
@@ -199,45 +156,6 @@ export default function ChatSystem() {
               ),
             ]);
           }
-        }
-      } else if (parsedMessage.type === "signed_data") {
-        console.log("Received a signed data");
-        const data = parsedMessage.data;
-        if (data.type === "public_chat") {
-          setMessageList((prev) => [
-            ...prev,
-            new Message(
-              onlineUsersRef.current.find(
-                (user) => user.publicKey === data.sender
-              ) ?? new User("Unknown"),
-              data.message,
-              new User("public_chat")
-            ), // the group chat need to be changed
-          ]);
-        } else if (data.type === "chat") {
-          console.log("Received encrypted chat message:", data.chat);
-          console.log("Received symm_keys:", data.symm_keys);
-          console.log("Received iv:", data.iv);
-          // (async () => {
-          //   const decryptedAESKey = await decryptAESKeyWithRSA(data.symm_keys, await cryptoKeyToBase64(privateKeyCrypto.current!));
-          //   const decryptedMessage = decryptAES(data.chat, decryptedAESKey);
-          //   console.log("Decrypted message:", decryptedMessage);
-          // })();
-          (async () => {
-            const decryptor = new JSEncrypt();
-            decryptor.setPrivateKey(await cryptoKeyToBase64(privateKeyCrypto.current!));
-
-            // 2. Decrypt the AES key using RSA private key
-            const decryptedAESKey = decryptor.decrypt(await cryptoKeyToBase64(data.symm_keys[0]));
-            if (!decryptedAESKey) {
-              throw new Error("Failed to decrypt the AES key with RSA.");
-            }
-
-            // 3. Decrypt the message using the decrypted AES key
-            const decryptedBytes = CryptoJS.AES.decrypt(data.chat, decryptedAESKey);
-            const decryptedMessage = decryptedBytes.toString(CryptoJS.enc.Utf8);
-            console.log("-----------Decrypted message:", decryptedMessage);
-          })();
         }
       } else if (parsedMessage.type === "client_list") {
         if (!queuedMessage.current) return;
@@ -275,6 +193,7 @@ export default function ChatSystem() {
           recipientServer["server_id"]
         );
         queuedMessage.current = null;
+        console.log("private message sent");
       } else if (parsedMessage.type === "disconnect") {
         setOnlineUsers((prev) =>
           prev.map((user) =>
@@ -283,6 +202,35 @@ export default function ChatSystem() {
               : user
           )
         );
+      } else if (parsedMessage.type === "signed_data") {
+        console.log("Received a signed data");
+        const data = parsedMessage.data;
+        if (data.type === "public_chat") {
+          setMessageList((prev) => [
+            ...prev,
+            new Message(
+              onlineUsersRef.current.find(
+                (user) => user.publicKey === data.sender
+              ) ?? new User("Unknown"),
+              data.message,
+              new User("public_chat")
+            ), // the group chat need to be changed
+          ]);
+        } else if (data.type === "chat") {
+          console.log("Received encrypted chat message:", data.chat);
+          if (data.symm_keys !== publicKey.current) return;
+          onlineUsersRef.current.find((user) => {
+            if (user.id === data.client_info["client-id"]) {
+              user.messages.push(
+                new Message(
+                  user,
+                  data.chat,
+                  new User(userID, publicKey.current, username)
+                )
+              );
+            }
+          });
+        }
       }
 
       if (ws) {
@@ -323,18 +271,21 @@ export default function ChatSystem() {
       return;
     }
 
-    const encryptor = new JSEncrypt();
-    encryptor.setPublicKey(recipient.publicKey);
+    // const encryptor = new JSEncrypt();
+    // encryptor.setPublicKey(recipient.publicKey);
 
-    const privateAESKey = await cryptoKeyToBase64(aesKey.current);
+    // const privateAESKey = await cryptoKeyToBase64(aesKey.current);
     // 2. Encrypt the message using AES
-    const encryptedMessage = CryptoJS.AES.encrypt(message.content, privateAESKey).toString();
+    // const encryptedMessage = CryptoJS.AES.encrypt(
+    //   message.content,
+    //   privateAESKey
+    // ).toString();
 
-    // 3. Encrypt the AES key using the recipient's RSA public key
-    const encryptedAESKey = encryptor.encrypt(privateAESKey);
-    if (!encryptedAESKey) {
-      throw new Error("Failed to encrypt the AES key with RSA.");
-    }
+    // // 3. Encrypt the AES key using the recipient's RSA public key
+    // const encryptedAESKey = encryptor.encrypt(privateAESKey);
+    // if (!encryptedAESKey) {
+    //   throw new Error("Failed to encrypt the AES key with RSA.");
+    // }
 
     // Encode IV as Base64
     const ivBase64 = arrayBufferToBase64(iv.current!);
@@ -344,8 +295,9 @@ export default function ChatSystem() {
       type: "chat",
       destination_servers: [recipientServer],
       iv: ivBase64, // Base64 encoded IV
-      symm_keys: [encryptedAESKey], // AES key encrypted with recipient's RSA key
-      chat: encryptedMessage, // Base64 encoded AES encrypted message
+      // symm_keys: [encryptedAESKey], // AES key encrypted with recipient's RSA key
+      symm_keys: recipient.publicKey, // AES key encrypted with recipient's RSA key
+      chat: message.content, // Base64 encoded AES encrypted message
       client_info: {
         "client-id": userID, // Sender's client ID
         "server-id": serverID, // Sender's server ID
@@ -355,6 +307,17 @@ export default function ChatSystem() {
 
     // Send the private message over WebSocket
     ws.send(JSON.stringify(privateMessage));
+    onlineUsersRef.current.find((user) => {
+      if (user.id === message.recipient.id) {
+        user.messages.push(
+          new Message(
+            user,
+            message.content,
+            new User(userID, publicKey.current, username)
+          )
+        );
+      }
+    });
   };
 
   // Helper function to sign the message (using RSA-PSS and SHA-256)
@@ -404,7 +367,11 @@ export default function ChatSystem() {
       type: "signed_data",
       data: data,
       counter: counter.current++,
-      signature: await SignMessage(data, counter.current, privateKeyCrypto.current!),
+      signature: await SignMessage(
+        data,
+        counter.current,
+        privateKeyCrypto.current!
+      ),
     };
   };
 
@@ -540,6 +507,7 @@ export default function ChatSystem() {
               setOffline={setOffline}
               sendFile={sendFile}
               recipient={recipient}
+              onlineUsers={onlineUsers}
             />
           </motion.div>
         ) : (

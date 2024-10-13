@@ -418,61 +418,47 @@ export default function ChatSystem() {
   };
 
   const generateKeyPair = async () => {
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-      publicKeyEncoding: {
-        type: 'spki',
-        format: 'pem',
+    if (!ws) {
+      console.error("WebSocket connection not established.");
+      return;
+    }
+
+    // Generate RSA key pair for signing (use RSA-PSS for signing)
+    const keyPair = await window.crypto.subtle.generateKey(
+      {
+        name: "RSA-PSS",
+        modulusLength: 2048,
+        publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
+        hash: { name: "SHA-256" },
       },
-      privateKeyEncoding: {
-        type: 'pkcs8',
-        format: 'pem',
-      },
-    });
+      true, // Can extract the key for export
+      ["sign", "verify"] // For signing and verifying signatures
+    );
+
+    // Store the keys as CryptoKey objects
+    publicKeyCrypto.current = keyPair.publicKey;
+    privateKeyCrypto.current = keyPair.privateKey;
+
+    // If you need to send the public key to others, convert it to PEM/Base64
+    const publicKeyTem = await window.crypto.subtle.exportKey(
+      "spki",
+      publicKeyCrypto.current!
+    );
+    const publicKeyBase64 = btoa(
+      String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
+    );
+
+    // Set publicKeyBase64 as the network-friendly representation
+    publicKey.current = publicKeyBase64; // Use this to share over the network
+
+    if (!username) setUsername("Anonymous");
+
+    setUserID(await computeFingerprint());
+
+    // Generate AES key for encryption and random IV
+    aesKey.current = await generateAESKey();
+    iv.current = window.crypto.getRandomValues(new Uint8Array(16));
   };
-
-  // const generateKeyPair = async () => {
-  //   if (!ws) {
-  //     console.error("WebSocket connection not established.");
-  //     return;
-  //   }
-
-  //   // Generate RSA key pair for signing (use RSA-PSS for signing)
-  //   const keyPair = await window.crypto.subtle.generateKey(
-  //     {
-  //       name: "RSA-PSS",
-  //       modulusLength: 2048,
-  //       publicExponent: new Uint8Array([0x01, 0x00, 0x01]),
-  //       hash: { name: "SHA-256" },
-  //     },
-  //     true, // Can extract the key for export
-  //     ["sign", "verify"] // For signing and verifying signatures
-  //   );
-
-  //   // Store the keys as CryptoKey objects
-  //   publicKeyCrypto.current = keyPair.publicKey;
-  //   privateKeyCrypto.current = keyPair.privateKey;
-
-  //   // If you need to send the public key to others, convert it to PEM/Base64
-  //   const publicKeyTem = await window.crypto.subtle.exportKey(
-  //     "spki",
-  //     publicKeyCrypto.current!
-  //   );
-  //   const publicKeyBase64 = btoa(
-  //     String.fromCharCode(...Array.from(new Uint8Array(publicKeyTem)))
-  //   );
-
-  //   // Set publicKeyBase64 as the network-friendly representation
-  //   publicKey.current = publicKeyBase64; // Use this to share over the network
-
-  //   if (!username) setUsername("Anonymous");
-
-  //   setUserID(await computeFingerprint());
-
-  //   // Generate AES key for encryption and random IV
-  //   aesKey.current = await generateAESKey();
-  //   iv.current = window.crypto.getRandomValues(new Uint8Array(16));
-  // };
 
   const sendMessage = async (message: string, recipient: string) => {
     if (!ws) {

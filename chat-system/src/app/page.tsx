@@ -225,9 +225,9 @@ export default function ChatSystem() {
       } else if (parsedMessage.type === "signed_data") {
         console.log("Received a signed data");
         const data = parsedMessage.data;
-        if (parsedMessage.signature !== data.sender) 
-          return console.error("Invalid signature");
         if (data.type === "public_chat") {
+          if (parsedMessage.signature !== data.sender) 
+            return console.error("Invalid signature");
           setMessageList((prev) => [
             ...prev,
             new Message(
@@ -528,6 +528,7 @@ export default function ChatSystem() {
               setOffline={setOffline}
               sendFile={sendFile}
               recipient={recipient}
+              onlineUsers={onlineUsers}
             />
           </motion.div>
         ) : (

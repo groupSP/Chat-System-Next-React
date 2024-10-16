@@ -21,6 +21,21 @@ import { Message, User } from "@/app/page";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import axios from "axios";
 import { toast } from "sonner";
+import {
+  ContextMenu,
+  ContextMenuCheckboxItem,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuRadioGroup,
+  ContextMenuRadioItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 interface ChatboxProps {
   // onForward: () => void;
@@ -31,6 +46,7 @@ interface ChatboxProps {
   setOffline: () => void;
   sendFile: (fileName: string, recipient: string, fileLink: string) => void;
   recipient: string;
+  onlineUsers: User[];
 }
 
 interface UploadResponse {
@@ -45,14 +61,18 @@ export default function Chatbox({
   setOffline,
   sendFile,
   recipient,
+  onlineUsers,
 }: ChatboxProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [message, setMessage] = useState("");
+  const [messageToSend, setMessageToSend] = useState("");
 
-  const handleSendMessage = () => {
-    console.log(`Sending message to ${recipient}: ${message}`);
-    sendMessage(message, recipient);
-    setMessage("");
+  const handleSendMessage = (
+    msg: string = messageToSend,
+    reci: string = recipient
+  ) => {
+    console.log(`Sending message to ${reci}: ${msg}`);
+    sendMessage(msg, reci);
+    setMessageToSend("");
   };
 
   const handleSendFile = async () => {
@@ -107,45 +127,78 @@ export default function Chatbox({
               {messageList.map(
                 (message, index) =>
                   message.recipient.id === recipient && (
-                    <li
-                      key={index}
-                      className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
-                        message.sender.id === userID
-                          ? "bg-green-800"
-                          : "bg-slate-100"
-                      }`}
-                    >
-                      <div className="flex-shrink-0">
-                        <Avatar>
-                          <AvatarImage
-                            src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
-                            alt={message.displayName()}
-                          />
-                          <AvatarFallback>
-                            {message.displayName()}
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                      <div className="flex-grow">
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-gray-500 text-sm">
-                            {message.displayName()}
-                          </span>
-                          <span className="font-sans mt-1 break-all">
-                            {message.content}
-                            {message.fileLink && (
-                              <a
-                                href={message.fileLink}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
-                              >
-                                → Click here to Download
-                              </a>
-                            )}
-                          </span>
-                        </div>
-                      </div>
+                    <li key={index}>
+                      <ContextMenu>
+                        <ContextMenuTrigger
+                          className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
+                            message.sender.id === userID
+                              ? "bg-green-800"
+                              : "bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex-shrink-0">
+                            <Avatar>
+                              <AvatarImage
+                                src={`https://api.dicebear.com/6.x/initials/svg?seed=${message.displayName()}`}
+                                alt={message.displayName()}
+                              />
+                              <AvatarFallback>
+                                {message.displayName()}
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                          <div className="flex-grow">
+                            <div className="flex flex-col">
+                              <span className="font-semibold text-gray-500 text-sm">
+                                {message.displayName()}
+                              </span>
+                              <span className="font-sans mt-1 break-all">
+                                {message.content.replace(
+                                  `[${userID.slice(0, 5)}]`,
+                                  "[You]"
+                                )}
+                                {message.fileLink && (
+                                  <a
+                                    href={message.fileLink}
+                                    download
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    → Click here to Download
+                                  </a>
+                                )}
+                              </span>
+                            </div>
+                          </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuSub>
+                            <ContextMenuSubTrigger>
+                              Forward to
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent className="w-48">
+                              {onlineUsers.map((user) => (
+                                <ContextMenuItem
+                                  key={user.id}
+                                  onClick={() =>
+                                    sendMessage(
+                                      `[${userID.slice(
+                                        0,
+                                        5
+                                      )}] Forwarded a message that sent by [${message
+                                        .displayName()
+                                        .slice(0, 5)}]: ${message.content}`,
+                                      user.id
+                                    )
+                                  }
+                                >
+                                  {user.username ?? user.id}
+                                </ContextMenuItem>
+                              ))}
+                            </ContextMenuSubContent>
+                          </ContextMenuSub>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     </li>
                   )
               )}
@@ -157,8 +210,8 @@ export default function Chatbox({
         <div className="flex space-x-2 w-full">
           <Input
             type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={messageToSend}
+            onChange={(e) => setMessageToSend(e.target.value)}
             placeholder="Type your message..."
             className="flex-grow"
             onKeyDown={(e) => {
@@ -178,7 +231,7 @@ export default function Chatbox({
               ))}
             </SelectContent>
           </Select> */}
-          <Button onClick={handleSendMessage}>
+          <Button onClick={() => handleSendMessage()}>
             <Send className="mr-2 h-4 w-4" /> Send
           </Button>
           <Input type="file" id="file-input" ref={fileInputRef} />

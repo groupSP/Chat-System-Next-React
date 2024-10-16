@@ -87,7 +87,6 @@ export default function ChatSystem() {
   const [userID, setUserID] = useState("");
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [messageList, setMessageList] = useState<Message[]>([]);
-  const [showForwardModal, setShowForwardModal] = useState(false);
   const [recipient, setRecipient] = useState("public_chat");
 
   const onlineUsersRef = useRef<User[]>([]);
@@ -496,10 +495,6 @@ export default function ChatSystem() {
   //   setOnlineUsers(allUsers);
   // };
 
-  const handleForward = () => {
-    setShowForwardModal(true);
-  };
-
   const onLogin = (username: string) => {
     setUsername(username);
     setRetryAttempts(1);
@@ -541,18 +536,6 @@ export default function ChatSystem() {
           >
             <LoginContainer onLogin={onLogin} />
           </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showForwardModal && (
-          <ForwardModal
-            onlineUsers={onlineUsers}
-            onClose={() => setShowForwardModal(false)}
-            onForward={(user) => {
-              console.log(`Forwarding to ${user}`);
-              setShowForwardModal(false);
-            }}
-          />
         )}
       </AnimatePresence>
     </div>

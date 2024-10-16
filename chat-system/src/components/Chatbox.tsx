@@ -88,11 +88,11 @@ export default function Chatbox({
       <CardHeader>
         <CardTitle className="font-thin pb-1">username: {username}</CardTitle>
         <CardTitle className="font-thin pb-4">userID: {userID}</CardTitle>
-        <CardTitle>
+        {/* <CardTitle>
           <Button className="rounded-3xl bg-slate-400" onClick={setOffline}>
             <Unplug className="mr-2 h-4 w-4" /> Go offline
           </Button>
-        </CardTitle>
+        </CardTitle> */}
         <CardTitle className="text-xl font-thin pt-4 text-slate-400">
           You are now chatting with:
         </CardTitle>
@@ -111,7 +111,7 @@ export default function Chatbox({
                       key={index}
                       className={`flex items-start space-x-4 pb-3 border border-gray-200 rounded-2xl p-4 ${
                         message.sender.id === userID
-                          ? "bg-green-200"
+                          ? "bg-green-800"
                           : "bg-slate-100"
                       }`}
                     >
@@ -131,7 +131,7 @@ export default function Chatbox({
                           <span className="font-semibold text-gray-500 text-sm">
                             {message.displayName()}
                           </span>
-                          <span className="font-sans mt-1">
+                          <span className="font-sans mt-1 break-all">
                             {message.content}
                             {message.fileLink && (
                               <a

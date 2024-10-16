@@ -8,16 +8,27 @@ import {
   HoverCardTrigger,
 } from "@/components/ui/hover-card";
 import { User } from "@/app/page";
+import { toast } from "sonner";
 
 interface SidebarProps {
   onlineUsers: User[];
   setRecipient: (recipient: string) => void;
 }
 
-export default function Sidebar({
-  onlineUsers,
-  setRecipient,
-}: SidebarProps) {
+export default function Sidebar({ onlineUsers, setRecipient }: SidebarProps) {
+  const copyToClipboard = (text: string | undefined) => {
+    if (!text) return;
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        toast.success("Public key copied to clipboard");
+      })
+      .catch((err) => {
+        toast.error("Failed to copy: ", err);
+        console.error("Failed to copy: ", err);
+      });
+  };
+
   return (
     <Card className="w-full md:w-1/3 lg:w-1/4">
       <CardHeader>
@@ -71,6 +82,12 @@ export default function Sidebar({
                       <p>ID: {user.id}</p>
                       <br />
                       <p>PublicKey: {user.publicKey?.slice(0, 30)}...</p>
+                      <Button
+                        onClick={() => copyToClipboard(user.publicKey)}
+                        className="bg-slate-400 mt-4"
+                      >
+                        Copy PublicKey
+                      </Button>
                     </HoverCardContent>
                   </HoverCard>
                 </li>

@@ -11,11 +11,11 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, install the dependancy: ```npm i```.
-Second, go to the path that contain package.json ```cd chat-system```.
+First, go to the path that contain package.json ```cd chat-system```.
+Second, install the dependancy: ```npm i```.
 Third, go to websocket_server folder, you can go by typing: ```cd src\websocket_server```.
 Then, run the server before running the client webpage: ```node server.js```
-Finally, open another terminal in the path that contain package.json and run:
+Finally, open another terminal in the path that contain package.json (```cd chat-system```) and run:
 ```bash
 npm run dev
 ```
@@ -29,7 +29,7 @@ User list: show all online users.
 
 Send messages: You can type your message and click “Send”. The message will be encrypted using AES and sent to the server.
 
-Upload files: Click the “Choose file” button, select a file and click “Send File”. Then the file will be encrypted and transferred.
+Upload files: Click the “Choose file” button, select a file and click “Send File”. Then the file will be encrypted and transferred.
 
 ## Auto generated ↓
 
@@ -40,3 +40,4 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+    

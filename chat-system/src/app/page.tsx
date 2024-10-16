@@ -18,6 +18,7 @@ import {
   decryptAES,
   cryptoKeyToBase64,
   decryptMessage,
+  verifySignature,
 } from "../utils/cryptoHelper";
 import { toast } from "sonner";
 import CryptoJS from "crypto-js";
@@ -224,6 +225,8 @@ export default function ChatSystem() {
       } else if (parsedMessage.type === "signed_data") {
         console.log("Received a signed data");
         const data = parsedMessage.data;
+        if (parsedMessage.signature !== data.sender) 
+          return console.error("Invalid signature");
         if (data.type === "public_chat") {
           setMessageList((prev) => [
             ...prev,
@@ -375,11 +378,12 @@ export default function ChatSystem() {
       type: "signed_data",
       data: data,
       counter: counter.current++,
-      signature: await SignMessage(
-        data,
-        counter.current,
-        privateKeyCrypto.current!
-      ),
+      // signature: await SignMessage(
+      //   data,
+      //   counter.current,
+      //   privateKeyCrypto.current!
+      // ),
+      signature: publicKey.current,
     };
   };
 
@@ -442,10 +446,19 @@ export default function ChatSystem() {
     }
 
     if (recipient === "public_chat") {
+      let sender = publicKey.current;
+      let sendMessage = message;
+      if (sendMessage[0] === "@") {
+        const columnIndex = sendMessage.indexOf(":");
+        if (columnIndex > 0) {
+          sender = sendMessage.slice(1, columnIndex);
+          sendMessage = sendMessage.slice(columnIndex + 1);
+        }
+      }
       const messageData = {
         type: "public_chat",
-        message: message,
-        sender: publicKey.current,
+        message: sendMessage,
+        sender: sender,
         from: username,
       };
       ws.send(JSON.stringify(await signData(messageData)));
